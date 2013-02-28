@@ -1,0 +1,8 @@
+abrev	title	xmin	ymin	xmax	ymax	color	xvar	yvar	u.co	lim
+beads	Beads	10000	40000	65000	65000	black	chl_small	pe	0.005	40000
+synecho	Synechococcus	10000	10000	40000	50000	tan2	chl_small	pe	0.25	0
+crypto	Cryptophyte-like	20000	35000	65000	65000	tomato3	pe	chl_small	0.5	0000
+cocco	Coccolithophores	30000	30000	65000	65000	blueviolet	fsc_small	fsc_perp	0.5	7000
+ultra	Ultraplankton	25000	25000	65000	65000	palegreen3	fsc_small	chl_small	0.25	NA
+nano	Nanoplankton	35000	35000	65000	65000	darkcyan	fsc_small	chl_small	0.75	NA
+pico	Picoplankton	1000	7000	30000	30000	violetred4	fsc_small	chl_small	0.25	NA
