@@ -112,13 +112,12 @@ if(initialize){
 
 	#Cluster Coccolithophores
 	
-	if(length(which(pop.baseline == "cocco"))>0){
-		x <- subset(opp, pop==0)
-		yvar <- pop.def["cocco", "yvar"] 
-		xvar <- pop.def["cocco", "xvar"]
-		cocco <- subset(x, x[,yvar] > x[,xvar] + pop.def["cocco", "lim"] & x[,xvar] > pop.def["cocco", "xmin"] & x[,yvar] > pop.def["cocco", "ymin"]& 	x[,"chl_small"] > lim.cocco)
-		opp[row.names(cocco), 'pop'] <- 3
-		}
+	x <- subset(opp, pop==0)
+	yvar <- pop.def["cocco", "yvar"] 
+	xvar <- pop.def["cocco", "xvar"]
+	cocco <- subset(x, x[,yvar] > x[,xvar] + pop.def["cocco", "lim"] & x[,xvar] > pop.def["cocco", "xmin"] & x[,yvar] > pop.def["cocco", "ymin"]& 	x[,"chl_small"] > lim.cocco)
+	opp[row.names(cocco), 'pop'] <- 3
+
 	
 	#Cluster Noise
 	if(!is.null(noise)){
@@ -174,7 +173,6 @@ if(initialize){
 	if(no.chl_big == F) y <- y[,c(5,5,5,10)]
 	
 	prev.km.big <- flowMeans(y, NumC=numc1,MaxN=numc1+numc2+2, nstart=nstart, Standardize=F, Update='None')
-
 	opp[row.names(y),'pop'] <- prev.km.big@Label + 100
 	
 	fsc.sort <- names(sort(by(opp[as.numeric(opp$pop) > 100,"fsc_small"], opp[as.numeric(opp$pop) > 100,"pop"], median)))
@@ -331,7 +329,6 @@ if(initialize){
 
 	par(mar=c(6,6,1,1))
 	plotCytogram(opp, 'fsc_small', 'fsc_perp', pop.def=pop.def, add.legend=TRUE)
-	mtext(paste(prev.file), side=1, line=5, at=-30000)
 	par(mar=c(0,6,1,1))
 	barplot(hist1$counts, axes=FALSE, space=0, col=NA)
 	par(mar=c(6,0,1,1))
@@ -460,13 +457,12 @@ for (file in opp.filelist){
 		}
 
 	#Cluster Coccolithophores
-	if(length(which(pop.baseline == "cocco"))>0){
-		x <- subset(opp, pop==0)
-		yvar <- pop.def["cocco", "yvar"] 
-		xvar <- pop.def["cocco", "xvar"]
-		cocco <- subset(x, x[,yvar] > x[,xvar] + pop.def["cocco", "lim"] & x[,xvar] > pop.def["cocco", "xmin"] & x[,yvar] > pop.def["cocco", "ymin"]& 	x[,"chl_small"] > lim.cocco)
-		opp[row.names(cocco), 'pop'] <- 3
-		}
+	x <- subset(opp, pop==0)
+	yvar <- pop.def["cocco", "yvar"] 
+	xvar <- pop.def["cocco", "xvar"]
+	cocco <- subset(x, x[,yvar] > x[,xvar] + pop.def["cocco", "lim"] & x[,xvar] > pop.def["cocco", "xmin"] & x[,yvar] > pop.def["cocco", "ymin"]& 	x[,"chl_small"] > lim.cocco)
+	opp[row.names(cocco), 'pop'] <- 3
+
 
 	#Cluster Noise
 	if(!is.null(noise)){
@@ -512,8 +508,8 @@ for (file in opp.filelist){
 
 
 	#### cluster cells larger than 1 um Beads or Synecho (if no beads)
-	x <- subset(opp, pop == 'y' & chl_small > fsc_small + pop.def["nano", "lim"]) # Elongated cells as 'nano'
-	opp[row.names(x),'pop'] <- 5 + numc1
+	y <- subset(opp, pop == 'y' & chl_small > fsc_small + pop.def["nano", "lim"]) # Elongated cells as 'nano'
+	opp[row.names(y),'pop'] <- 5 + numc1
 
 	y <- subset(opp, pop == "y")
 	if(no.chl_big == T) y <- y[,c(5,5,5,9)]
@@ -558,6 +554,8 @@ for (file in opp.filelist){
 		
 				par(def.par)
 				
+			dev.off()
+				
 				next
 				}
 	
@@ -571,12 +569,43 @@ for (file in opp.filelist){
 			}
 	
 	#### cluster cells smaller than 1 um Beads or Synecho (if no beads)
-	x <- subset(opp, pop == 'z' & chl_small > fsc_small + pop.def["nano", "lim"]) # Elongated cells as 'pico'
-	opp[row.names(x),'pop'] <- 5 + numc1 + numc2
+	z <- subset(opp, pop == 'z' & chl_small > fsc_small + pop.def["nano", "lim"]) # Elongated cells as 'pico'
+	opp[row.names(z),'pop'] <- 5 + numc1 + numc2
 	
 	z <- subset(opp, pop == "z")
 	z <- z[,c(5,9)]
+	if(nrow(z) < 3){
+		print(paste("found only", nrow(z), "small cells, FLAGGED FILE"))
+			outlier <- data.frame(day=day, file=getFileNumber(file))
+			outlier.table <- rbind(outlier.table, outlier)
+			write.csv(outlier.table, file=paste(save.path,"c.outliers", sep=""), row.names=FALSE, quote=FALSE)
+			
+			png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".class.gif", sep=""),width=9, height=12, unit='in', res=100)
 		
+				hist1 <- hist(x$fsc_small, breaks=breaks, plot=FALSE)
+				hist2 <- hist(x$chl_small, breaks=breaks, plot=FALSE)
+		
+				def.par <- par(no.readonly = TRUE) # save default, for resetting...
+				nf <- layout(matrix(c(2,0,5,0,1,3,4,6,8,0,11,0,7,9,10,12,14,0,16,16,13,15,16,16),4,4,byrow=TRUE), c(3,1,3,1,3), c(1,3,1,3,1,3), TRUE)	
+
+				par(mar=c(6,6,1,1))
+				plot(km,drawboundary=T,drawvor=FALSE,drawkmeans=FALSE,drawlab=TRUE)
+				mtext("Cut-off Large and Small Phytoplankton", 3,cex=0.7)
+				mtext(paste(file), side=3, line=-2, outer=T)
+				abline(v=lim,col='red',lwd=4)
+				par(mar=c(0,6,1,1))
+				barplot(hist1$counts, axes=FALSE, space=0, col=NA)
+				par(mar=c(6,0,1,1))
+				barplot(hist2$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
+	
+				mtext(paste("file: ",flowPhyto:::.getYearDay(file),'/',basename(file), sep=""), side=3, line=-4, outer=T,cex=1.2)
+			
+			dev.off()
+			
+			next
+
+			}
+	
 	if(median(z$fsc_small) < 5000 & median(z$chl_small) < 10000){
 		print("Electrical noise detected!")
 		prev.km.small <- flowPeaks(z, tol=0.3, h0=0.1)
@@ -618,6 +647,8 @@ for (file in opp.filelist){
 				par(mar=c(6,0,1,1))
 				barplot(hist6$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
 
+			dev.off()
+			
 		par(def.par)
 
 		next
