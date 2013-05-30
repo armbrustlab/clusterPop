@@ -89,8 +89,8 @@ if(initialize){
 	opp[row.names(synecho), 'pop'] <- 5
 
 	if(nrow(beads) < min.beads & nrow(synecho) > min.synecho){
-		lim <- median(synecho$fsc_small) -diff.lim.synecho
-		print(paste("Light Scatter cut-off between particles 'smaller' and 'larger' than Synecho:", lim))
+		lim <- median(synecho$chl_small) -diff.lim.synecho
+		print(paste("CHL cut-off between particles 'smaller' and 'larger' than Synecho:", lim))
 
 			}
 	
@@ -126,13 +126,6 @@ if(initialize){
 		opp[row.names(bg),'pop'] <- 1
 		}
 	
-	
-	# filter out remaining PE positive particles
-	x <- subset(opp, pop==0)
-	pe.pos <- subset(x, pop == 0 & pe > lim.pe & chl_small < 65500) 
-	opp[row.names(pe.pos),'pop'] <- 1
-	
-
 
 	###############################################
 	####   K-means pe-negative phytoplankton   ####
@@ -143,59 +136,47 @@ if(initialize){
 	opp[row.names(x),'pop'] <- 5 + numc1
 
 	x <- subset(opp, pop == 0)
+	x <- x[,c(5,9)]
 
-	if(sd(x[,"chl_big"]) < 1000){
-			x <- x[,c(5,9)]
-			no.chl_big <- TRUE
-		}else{
-			x <- x[,c(5,9,10)]
-			no.chl_big <- FALSE
-		}
-
-	km <- flowPeaks(x)
+	km <- flowPeaks(x, tol=0.1, h0=0.5, h=1.5)
 
 	opp[row.names(x),'pop'] <- km$peaks.cluster + 100
 	
 		for(i in 1:((max(km$peaks.cluster)))){
 			df <- subset(opp, pop == i+100)
-			print(paste("Light Scatter mediam for cluster",i,": ", median(df$fsc_small)))
-				if(median(df$fsc_small) > lim) opp[row.names(df),'pop'] <- "y"
+			print(paste("Light Scatter mediam for cluster",i,": ", median(df$chl_small)))
+				if(median(df$chl_small) > lim) opp[row.names(df),'pop'] <- "y"
 				else opp[row.names(df),'pop'] <- "z"	
 			}
 
 
 	### cluster cells larger than 1 um Beads or Synecho (if no beads)
-	y <- subset(opp, pop == 'y' & chl_small > fsc_small + pop.def["nano", "lim"]) # Elongated cells as 'nano'
-	opp[row.names(y),'pop'] <- 5 + numc1
-	
 	y <- subset(opp, pop == "y")
-	if(no.chl_big == T) y <- y[,c(5,5,5,9)]
-	if(no.chl_big == F) y <- y[,c(5,5,5,10)]
+	y <- y[,c(5,5,5,9)]
+
+	prev.km.big <- try(flowMeans(y, NumC=numc1,MaxN=numc1+numc2+2, nstart=nstart, Standardize=F, Update='None'))
+	if(class(prev.km.big) == "try-error") prev.km.big <- try(flowMeans(y, NumC=numc1,MaxN=numc1+numc2+1, nstart=nstart, Standardize=F, Update='None'))
+	if(class(prev.km.big) == "try-error") prev.km.big <- try(flowMeans(y, NumC=numc1,MaxN=numc1+numc2, nstart=nstart, Standardize=F, Update='None'))
 	
-	prev.km.big <- flowMeans(y, NumC=numc1,MaxN=numc1+numc2+2, nstart=nstart, Standardize=F, Update='None')
 	opp[row.names(y),'pop'] <- prev.km.big@Label + 100
 	
 	fsc.sort <- names(sort(by(opp[as.numeric(opp$pop) > 100,"fsc_small"], opp[as.numeric(opp$pop) > 100,"pop"], median)))
-	#fsc.sort <- names(sort(prev.km.big$centers[,"fsc_small"]))[i]
 
 		for(i in 1:numc1){
 			df <- subset(opp, pop == as.numeric(fsc.sort[i]))
 			opp[row.names(df),'pop'] <- i+5
 			}
 	
-	
+
 
 	### cluster cells smaller than 1 um Beads or Synecho (if no beads)
-	z <- subset(opp, pop == 'z' & chl_small > fsc_small + pop.def["nano", "lim"]) # Elongated cells as 'pico'
-	opp[row.names(z),'pop'] <- 5 + numc1 + numc2
-
 	z <- subset(opp, pop == "z")
 	z <- z[,c(5,9)]
 
 	if(median(z$fsc_small) < 5000 & median(z$chl_small) < 10000){
 		print("Electrical noise detected!")
 		prev.km.small <- flowPeaks(z, tol=0.3, h0=0.1)
-		}else prev.km.small <- flowPeaks(z)
+		}else prev.km.small <- flowPeaks(z, tol=0.1, h0=0.5, h=1.5)
 
 	opp[row.names(z),'pop'] <- prev.km.small$peaks.cluster + 100
 	
@@ -230,7 +211,7 @@ if(initialize){
 	par(mar=c(6,6,1,1))
 	plot(km,drawboundary=T,drawvor=FALSE,drawkmeans=FALSE,drawlab=TRUE)
 	mtext("Cut-off Large and Small Phytoplankton", 3,cex=0.7)
-	abline(v=lim,col='red',lwd=4)
+	abline(h=lim,col='red',lwd=4)
 	par(mar=c(0,6,1,1))
 	barplot(hist1$counts, axes=FALSE, space=0, col=NA)
 	par(mar=c(6,0,1,1))
@@ -239,7 +220,8 @@ if(initialize){
 	mtext(paste("file: ",flowPhyto:::.getYearDay(prev.file),'/',basename(prev.file), sep=""), side=3, line=-4, outer=T,cex=1.2)
 
 	par(mar=c(6,6,1,1))
-	plot(y[,"fsc_small"],y[,"chl_small"], col=prev.km.big@Label,cex=0.5,xlab='fsc_small', ylab='chl_small', main="Large Phytoplankton")
+	plot(y[,"fsc_small"],y[,"chl_small"], col=prev.km.big@Label,cex=0.5,xlab='fsc_small', ylab='chl_small')
+	mtext("Large Phytoplankton", 3, cex=0.7)
 	par(mar=c(0,6,1,1))
 	barplot(hist3$counts, axes=FALSE, space=0, col=NA)
 	par(mar=c(6,0,1,1))
@@ -288,12 +270,10 @@ if(initialize){
 	hist1 <- hist(opp$fsc_small, breaks=seq(0,2^16, by=2^16/breaks), plot=FALSE)
 	hist2 <- hist(opp$chl_small, breaks=seq(0,2^16, by=2^16/breaks), plot=FALSE)
 	hist3 <- hist(opp$pe, breaks=seq(0,2^16, by=2^16/breaks), plot=FALSE)
-	hist4 <- hist(opp$chl_big, breaks=seq(0,2^16, by=2^16/breaks), plot=FALSE)
-	hist5 <- hist(opp$fsc_perp, breaks=seq(0,2^16, by=2^16/breaks), plot=FALSE)
+	hist4 <- hist(opp$fsc_perp, breaks=seq(0,2^16, by=2^16/breaks), plot=FALSE)
 
 	def.par <- par(no.readonly = TRUE) # save default, for resetting...
-	if(no.chl_big == T) nf <- layout(matrix(c(2,0,5,0,1,3,4,6,8,0,11,0,7,9,10,12,14,0,16,16,13,15,16,16),4,4,byrow=TRUE), c(3,1,3,1,3), c(1,3,1,3,1,3), TRUE)
-	if(no.chl_big == F) nf <- layout(matrix(c(2,0,5,0,1,3,4,6,8,0,11,0,7,9,10,12,14,0,16,16,13,15,16,16),6,4,byrow=TRUE), c(3,1,3,1,3), c(1,3,1,3,1,3), TRUE)
+	nf <- layout(matrix(c(2,0,5,0,1,3,4,6,8,0,11,0,7,9,10,12,14,0,16,16,13,15,16,16),4,4,byrow=TRUE), c(3,1,3,1,3), c(1,3,1,3,1,3), TRUE)
 
 	par(mar=c(6,6,1,1))
 	plotCytogram(opp, 'fsc_small', 'chl_small', pop.def=pop.def)
@@ -311,15 +291,6 @@ if(initialize){
 	par(mar=c(6,0,1,1))
 	barplot(hist3$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
 
-	if(no.chl_big == F){
-		par(mar=c(6,6,1,1))
-		plotCytogram(opp, 'fsc_small', 'chl_big', pop.def=pop.def)
-		par(mar=c(0,6,1,1))
-		barplot(hist1$counts, axes=FALSE, space=0, col=NA)
-		par(mar=c(6,0,1,1))
-		barplot(hist4$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
-		}
-
 	par(mar=c(6,6,1,1))
 	plotCytogram(opp, 'chl_small', 'pe', pop.def=pop.def)
 	par(mar=c(0,6,1,1))
@@ -332,7 +303,7 @@ if(initialize){
 	par(mar=c(0,6,1,1))
 	barplot(hist1$counts, axes=FALSE, space=0, col=NA)
 	par(mar=c(6,0,1,1))
-	barplot(hist5$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
+	barplot(hist4$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
 
 	par(def.par)
 
@@ -389,7 +360,7 @@ for (file in opp.filelist){
 		outlier.table <- rbind(outlier.table, outlier)
 		write.csv(outlier.table, file=paste(save.path,"c.outliers", sep=""), row.names=FALSE, quote=FALSE)
 	
-		png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".class.gif", sep=""),width=9, height=12, unit='in', res=100)
+		png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".outlier.gif", sep=""),width=9, height=12, unit='in', res=100)
 	
 			par(mfrow=c(1,2), pty='s')
 				plot(opp[,"fsc_small"], opp[,"chl_small"], pch=1, cex=0.7, xlab="fsc_small", ylab="chl_small",ylim=c(0,2^16),xlim=c(0,2^16),col= densCols(opp[,"fsc_small"], opp[,"chl_small"], colramp=.rainbow.cols))
@@ -470,10 +441,6 @@ for (file in opp.filelist){
 		bg <- subset(x, chl_small < noise[1] | fsc_small < noise[2])
 		opp[row.names(bg),'pop'] <- 1
 		}
-	
-	# filter out remaining PE positive particles
-	pe.pos <- subset(opp, pop == 0 & pe > lim.pe & chl_small < 65500) 
-	opp[row.names(pe.pos),'pop'] <- 1	
 
 			
 	########################
@@ -485,37 +452,27 @@ for (file in opp.filelist){
 	opp[row.names(x),'pop'] <- 5 + numc1
 
 	x <- subset(opp, pop == 0)
-	
-	if(sd(x[,"chl_big"]) < 1000){
-			x <- x[,c(5,9)]
-			no.chl_big <- TRUE
-		}else{
-			x <- x[,c(5,9,10)]
-			no.chl_big <- FALSE
-		}
+	x <- x[,c(5,9)]
 
-	#km <- clara(x, numc1+numc2+2, samples=nstart, pamLike =T)
-	km <- flowPeaks(x)
+	km <- flowPeaks(x, tol=0.1, h0=0.5, h=1.5)
 
 	opp[row.names(x),'pop'] <- km$peaks.cluster + 100
 	
 		for(i in 1:((max(km$peaks.cluster)))){
 			df <- subset(opp, pop == i+100)
-			#print(paste("Light Scatter mediam for cluster",i,": ", median(df$fsc_small)))
-				if(median(df$fsc_small) > lim) opp[row.names(df),'pop'] <- "y"
+			#print(paste("Light Scatter mediam for cluster",i,": ", median(df$chl_small)))
+				if(median(df$chl_small) > lim) opp[row.names(df),'pop'] <- "y"
 				else opp[row.names(df),'pop'] <- "z"	
 			}
 
 
 	#### cluster cells larger than 1 um Beads or Synecho (if no beads)
-	y <- subset(opp, pop == 'y' & chl_small > fsc_small + pop.def["nano", "lim"]) # Elongated cells as 'nano'
-	opp[row.names(y),'pop'] <- 5 + numc1
-
 	y <- subset(opp, pop == "y")
-	if(no.chl_big == T) y <- y[,c(5,5,5,9)]
-	if(no.chl_big == F) y <- y[,c(5,5,5,10)]
+	y <- y[,c(5,5,5,9)]
 	
 	prev.km.big <- try(flowMeans(y, NumC=numc1,MaxN=numc1+numc2+2, nstart=nstart, Standardize=F, Update='None'),silent=F)
+	if(class(prev.km.big) == "try-error") prev.km.big <- try(flowMeans(y, NumC=numc1,MaxN=numc1+numc2+1, nstart=nstart, Standardize=F, Update='None'))
+	if(class(prev.km.big) == "try-error") prev.km.big <- try(flowMeans(y, NumC=numc1,MaxN=numc1+numc2, nstart=nstart, Standardize=F, Update='None'))
 	
 			if(class(prev.km.big) == "try-error"){
 				print("flowMeans error, FLAGGED FILE")
@@ -523,7 +480,7 @@ for (file in opp.filelist){
 				outlier.table <- rbind(outlier.table, outlier)
 				write.csv(outlier.table, file=paste(save.path,"c.outliers", sep=""), row.names=FALSE, quote=FALSE)
 				
-			png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".class.gif", sep=""),width=9, height=12, unit='in', res=100)
+			png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".outlier.gif", sep=""),width=9, height=12, unit='in', res=100)
 
 				hist1 <- hist(x$fsc_small, breaks=breaks, plot=FALSE)
 				hist2 <- hist(x$chl_small, breaks=breaks, plot=FALSE)
@@ -537,7 +494,7 @@ for (file in opp.filelist){
 				plot(km,drawboundary=T,drawvor=FALSE,drawkmeans=FALSE,drawlab=TRUE)
 				mtext("Cut-off Large and Small Phytoplankton", 3,cex=0.7)
 				mtext(paste(file), side=3, line=-2, outer=T)
-				abline(v=lim,col='red',lwd=4)
+				abline(h=lim,col='red',lwd=4)
 				par(mar=c(0,6,1,1))
 				barplot(hist1$counts, axes=FALSE, space=0, col=NA)
 				par(mar=c(6,0,1,1))
@@ -546,7 +503,8 @@ for (file in opp.filelist){
 				mtext(paste("file: ",flowPhyto:::.getYearDay(file),'/',basename(file), sep=""), side=3, line=-4, outer=T,cex=1.2)
 
 				par(mar=c(6,6,1,1))
-				plot(y[,"fsc_small"],y[,"chl_small"], col=prev.km.big@Label,cex=0.5,xlab='fsc_small', ylab='chl_small', main="Large Phytoplankton")
+				plot(y[,"fsc_small"],y[,"chl_small"], col=prev.km.big@Label,cex=0.5,xlab='fsc_small', ylab='chl_small')
+				mtext("Large Phytoplankton", 3, cex=0.7)
 				par(mar=c(0,6,1,1))
 				barplot(hist3$counts, axes=FALSE, space=0, col=NA)
 				par(mar=c(6,0,1,1))
@@ -558,9 +516,8 @@ for (file in opp.filelist){
 				
 				next
 				}
-	
 	opp[row.names(y),'pop'] <- prev.km.big@Label + 100
-
+							
 	fsc.sort <- names(sort(by(opp[as.numeric(opp$pop) > 100,"fsc_small"], opp[as.numeric(opp$pop) > 100,"pop"], median)))
 
 		for(i in 1:numc1){
@@ -568,23 +525,24 @@ for (file in opp.filelist){
 			opp[row.names(df),'pop'] <- i+5
 			}
 	
-	#### cluster cells smaller than 1 um Beads or Synecho (if no beads)
-	z <- subset(opp, pop == 'z' & chl_small > fsc_small + pop.def["nano", "lim"]) # Elongated cells as 'pico'
-	opp[row.names(z),'pop'] <- 5 + numc1 + numc2
 	
+	#### cluster cells smaller than 1 um Beads or Synecho (if no beads)
 	z <- subset(opp, pop == "z")
 	z <- z[,c(5,9)]
+
 	if(nrow(z) < 3){
 		print(paste("found only", nrow(z), "small cells, FLAGGED FILE"))
 			outlier <- data.frame(day=day, file=getFileNumber(file))
 			outlier.table <- rbind(outlier.table, outlier)
 			write.csv(outlier.table, file=paste(save.path,"c.outliers", sep=""), row.names=FALSE, quote=FALSE)
 			
-			png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".class.gif", sep=""),width=9, height=12, unit='in', res=100)
+			png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".cluster.gif", sep=""),width=9, height=12, unit='in', res=100)
 		
 				hist1 <- hist(x$fsc_small, breaks=breaks, plot=FALSE)
 				hist2 <- hist(x$chl_small, breaks=breaks, plot=FALSE)
-		
+				hist3 <- hist(y$fsc_small, breaks=breaks, plot=FALSE)
+				hist4 <- hist(y$chl_small, breaks=breaks, plot=FALSE)
+			
 				def.par <- par(no.readonly = TRUE) # save default, for resetting...
 				nf <- layout(matrix(c(2,0,5,0,1,3,4,6,8,0,11,0,7,9,10,12,14,0,16,16,13,15,16,16),4,4,byrow=TRUE), c(3,1,3,1,3), c(1,3,1,3,1,3), TRUE)	
 
@@ -592,32 +550,46 @@ for (file in opp.filelist){
 				plot(km,drawboundary=T,drawvor=FALSE,drawkmeans=FALSE,drawlab=TRUE)
 				mtext("Cut-off Large and Small Phytoplankton", 3,cex=0.7)
 				mtext(paste(file), side=3, line=-2, outer=T)
-				abline(v=lim,col='red',lwd=4)
+				abline(h=lim,col='red',lwd=4)
 				par(mar=c(0,6,1,1))
 				barplot(hist1$counts, axes=FALSE, space=0, col=NA)
 				par(mar=c(6,0,1,1))
 				barplot(hist2$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
 	
+				par(mar=c(6,6,1,1))
+				plot(y[,"fsc_small"],y[,"chl_small"], col=prev.km.big@Label,cex=0.5,xlab='fsc_small', ylab='chl_small')
+				mtext("Large Phytoplankton", 3, cex=0.7)
+				par(mar=c(0,6,1,1))
+				barplot(hist3$counts, axes=FALSE, space=0, col=NA)
+				par(mar=c(6,0,1,1))
+				barplot(hist4$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
+
 				mtext(paste("file: ",flowPhyto:::.getYearDay(file),'/',basename(file), sep=""), side=3, line=-4, outer=T,cex=1.2)
 			
 			dev.off()
 			
-			next
-
-			}
+				}
 	
-	if(median(z$fsc_small) < 5000 & median(z$chl_small) < 10000){
+	if(nrow(z) > 3) {
+		
+		if(median(z$fsc_small) < 5000 & median(z$chl_small) < 10000){
+		
 		print("Electrical noise detected!")
-		prev.km.small <- flowPeaks(z, tol=0.3, h0=0.1)
-		}else prev.km.small <- flowPeaks(z)
+		prev.km.small <- try(flowPeaks(z, tol=0.3, h0=0.1))
+		
+		}else{ 
+		
+		prev.km.small <- try(flowPeaks(z))
+		
+		}
 
-			if(class(prev.km.small) == "try-error"){
+	    if(class(prev.km.small) == "try-error"){
 				print("flowPeaks error, FLAGGED FILE")
 				outlier <- data.frame(day=day, file=getFileNumber(file))
 				outlier.table <- rbind(outlier.table, outlier)
 				write.csv(outlier.table, file=paste(save.path,"c.outliers", sep=""), row.names=FALSE, quote=FALSE)
 				
-			png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".class.gif", sep=""),width=9, height=12, unit='in', res=100)
+			png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".cluster.gif", sep=""),width=9, height=12, unit='in', res=100)
 		
 				hist1 <- hist(x$fsc_small, breaks=breaks, plot=FALSE)
 				hist2 <- hist(x$chl_small, breaks=breaks, plot=FALSE)
@@ -651,22 +623,24 @@ for (file in opp.filelist){
 			
 		par(def.par)
 
-		next
 				}
 
-	opp[row.names(z),'pop'] <- prev.km.small$peaks.cluster + 100
+		if(class(prev.km.small) != "try-error"){
+
+			opp[row.names(z),'pop'] <- prev.km.small$peaks.cluster + 100
 	
-		for(i in 1:max((prev.km.small$peaks.cluster))){
-			df <- subset(opp, pop == (i+100))
-			quant.chl <- median(df$chl_small)
-			if(quant.chl < lim.noise){
+			for(i in 1:max((prev.km.small$peaks.cluster))){
+				df <- subset(opp, pop == (i+100))
+				quant.chl <- median(df$chl_small)
+				if(quant.chl < lim.noise){
 							opp[row.names(df),'pop'] <- 1
 
 					}else{
 							opp[row.names(df),'pop'] <- numc1 + 1 + 5
 							}
+				}	
 			}
-
+		}
 					
 	#################
 	### class vct ###
@@ -726,13 +700,11 @@ for (file in opp.filelist){
 	hist1 <- hist(opp$fsc_small, breaks=seq(0,2^16, by=2^16/breaks), plot=FALSE)
 	hist2 <- hist(opp$chl_small, breaks=seq(0,2^16, by=2^16/breaks), plot=FALSE)
 	hist3 <- hist(opp$pe, breaks=seq(0,2^16, by=2^16/breaks), plot=FALSE)
-	if(no.chl_big == F)	hist4 <- hist(opp$chl_big, breaks=seq(0,2^16, by=2^16/breaks), plot=FALSE)
-	hist5 <- hist(opp$fsc_perp, breaks=seq(0,2^16, by=2^16/breaks), plot=FALSE)
+	hist4 <- hist(opp$fsc_perp, breaks=seq(0,2^16, by=2^16/breaks), plot=FALSE)
 
 
 	def.par <- par(no.readonly = TRUE) # save default, for resetting...
-	if(no.chl_big == T) nf <- layout(matrix(c(2,0,5,0,1,3,4,6,8,0,11,0,7,9,10,12,14,0,16,16,13,15,16,16),4,4,byrow=TRUE), c(3,1,3,1,3), c(1,3,1,3,1,3), TRUE)
-	if(no.chl_big == F) nf <- layout(matrix(c(2,0,5,0,1,3,4,6,8,0,11,0,7,9,10,12,14,0,16,16,13,15,16,16),6,4,byrow=TRUE), c(3,1,3,1,3), c(1,3,1,3,1,3), TRUE)
+	nf <- layout(matrix(c(2,0,5,0,1,3,4,6,8,0,11,0,7,9,10,12,14,0,16,16,13,15,16,16),4,4,byrow=TRUE), c(3,1,3,1,3), c(1,3,1,3,1,3), TRUE)
 
 	par(mar=c(6,6,1,1))
 	plotCytogram(opp, 'fsc_small', 'chl_small', pop.def=pop.def)
@@ -751,15 +723,6 @@ for (file in opp.filelist){
 	par(mar=c(6,0,1,1))
 	barplot(hist3$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
 
-	if(no.chl_big == F){
-		par(mar=c(6,6,1,1))
-		plotCytogram(opp, 'fsc_small', 'chl_big', pop.def=pop.def)
-		par(mar=c(0,6,1,1))
-		barplot(hist1$counts, axes=FALSE, space=0, col=NA)
-		par(mar=c(6,0,1,1))
-		barplot(hist4$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
-		}
-
 	par(mar=c(6,6,1,1))
 	plotCytogram(opp, 'chl_small', 'pe', pop.def=pop.def)
 	par(mar=c(0,6,1,1))
@@ -772,7 +735,7 @@ for (file in opp.filelist){
 	par(mar=c(0,6,1,1))
 	barplot(hist1$counts, axes=FALSE, space=0, col=NA)
 	par(mar=c(6,0,1,1))
-	barplot(hist5$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
+	barplot(hist4$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
 
 	par(def.par)
 
@@ -785,11 +748,11 @@ for (file in opp.filelist){
 	####################
 	### EMPTY MEMORy ###	
 	####################	
-	rm(opp, noise, synecho, crypto, beads, cocco, hetero, prev.km, prev.km.big, prev.km.small, prev.settings,p, df, x, y, z, hist1, hist2, hist3, hist4, hist5)	
+	rm(opp, noise, synecho, crypto, beads, cocco, hetero, prev.km, prev.km.big, prev.km.small, p, df, x, y, z, hist1, hist2, hist3, hist4)	
 	}
 
 	print("Combining census.tab ...")
-	caroline:::write.delim(combineCensusFiles(cruise.path),paste(cruise.path,'/census.tab',sep=""))
+	caroline:::write.delim(combineCensusFiles(save.path),paste(save.path,'census.tab',sep=""))
 	
 	
 	}		
