@@ -364,8 +364,11 @@ for (file in opp.filelist){
 		outlier <- data.frame(day=day, file=getFileNumber(file))
 		outlier.table <- rbind(outlier.table, outlier)
 		write.csv(outlier.table, file=paste(save.path,"c.outliers", sep=""), row.names=FALSE, quote=FALSE)
-	
-		png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".outlier.gif", sep=""),width=9, height=12, unit='in', res=100)
+		
+		opp$pop <- 'noise'
+		write.table(opp$pop, paste(save.path, day,"/",basename(file),".",getFileNumber(file),'-class.vct',sep=""), row.names=FALSE, col.names='pop', quote=FALSE)
+			
+		png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".outlier.class.gif", sep=""),width=9, height=12, unit='in', res=100)
 	
 			par(mfrow=c(1,2), pty='s')
 				plot(opp[,"fsc_small"], opp[,"chl_small"], pch=1, cex=0.7, xlab="fsc_small", ylab="chl_small",ylim=c(0,2^16),xlim=c(0,2^16),col= densCols(opp[,"fsc_small"], opp[,"chl_small"], colramp=.rainbow.cols))
@@ -485,6 +488,9 @@ for (file in opp.filelist){
 				outlier.table <- rbind(outlier.table, outlier)
 				write.csv(outlier.table, file=paste(save.path,"c.outliers", sep=""), row.names=FALSE, quote=FALSE)
 				
+				opp$pop <- 'noise'
+				write.table(opp$pop, paste(save.path, day,"/",basename(file),".",getFileNumber(file),'-class.vct',sep=""), row.names=FALSE, col.names='pop', quote=FALSE)
+
 				next
 				}
 	opp[row.names(y),'pop'] <- prev.km.big@Label + 100
@@ -507,7 +513,7 @@ for (file in opp.filelist){
 			outlier.table <- rbind(outlier.table, outlier)
 			write.csv(outlier.table, file=paste(save.path,"c.outliers", sep=""), row.names=FALSE, quote=FALSE)
 			
-			png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".cluster.gif", sep=""),width=9, height=12, unit='in', res=100)
+			png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".cluster.class.gif", sep=""),width=9, height=12, unit='in', res=100)
 		
 				hist1 <- hist(x$fsc_small, breaks=breaks, plot=FALSE)
 				hist2 <- hist(x$chl_small, breaks=breaks, plot=FALSE)
@@ -543,7 +549,7 @@ for (file in opp.filelist){
 	
 	if(nrow(z) > 3) {
 		
-		d <- peaks(density(z[,"chl_small"]))
+		d <- peaks(density(z[,"fsc_small"]))
 
 		if(nrow(d) < 1){
 		print("Electrical noise detected!")
@@ -556,7 +562,7 @@ for (file in opp.filelist){
 				outlier.table <- rbind(outlier.table, outlier)
 				write.csv(outlier.table, file=paste(save.path,"c.outliers", sep=""), row.names=FALSE, quote=FALSE)
 				
-			png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".cluster.gif", sep=""),width=9, height=12, unit='in', res=100)
+			png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".cluster.class.gif", sep=""),width=9, height=12, unit='in', res=100)
 		
 				hist1 <- hist(x$fsc_small, breaks=breaks, plot=FALSE)
 				hist2 <- hist(x$chl_small, breaks=breaks, plot=FALSE)
