@@ -1,21 +1,226 @@
-.Prompt <- function(){
-			answer <- readline("What do you want to do ? \n	1: Delete these settings\n	2: Keep these settings and stop \n	3: Apply these settings to the rest of the files\n Answer =")
-			if(answer == 1) x <- 0
-			if(answer == 2) x <- 1
-			if(answer == 3) x <- 2
-			return(x)
-			}
-
 .nextplot <- function(){
-			answer <- readline("Next Plot (y / n)?")
-			if(answer == 'y') x <- 0
-			if(answer == 'n') x <- 1
+			answer <- readline("Continue ? (y/n)")
+			if(answer == 'y') x <- 1
+			if(answer == 'n') x <- 0
 			return(x)
 			}
 
+clusterPopBaseline <- function(opp, pop.def, noise){
+	
+	#Cluster Beads
+	x <- subset(opp, pop=='x')
+	beads <- subset(x, pe > 65500) ## PE-saturated particles assigned as 'beads
+	opp[row.names(beads),'pop'] <- 'beads'
+	
+	x <- subset(opp, pop=='x')
+	xvar <- pop.def["beads", "xvar"]
+	yvar <- pop.def["beads", "yvar"]
+	beads <- subset(x, x[,yvar] > 0.5*x[,xvar] + pop.def["beads", "lim"] & x[,xvar] > pop.def["beads", "xmin"] & x[,yvar] > pop.def["beads", "ymin"] & x[,xvar] < pop.def["beads", "xmax"] & x[,yvar] < pop.def["beads", "ymax"])
+	opp[row.names(beads),'pop'] <- 'beads'
+
+	#Cluster Synecho
+	x <- subset(opp, pop=='x')
+	yvar <- pop.def["synecho", "yvar"]
+	xvar <- pop.def["synecho", "xvar"]
+	synecho <- subset(x, x[,yvar] > x[,xvar] - pop.def["synecho", "lim"] & x[,xvar] > pop.def["synecho", "xmin"] & x[,yvar] > pop.def["synecho", "ymin"] & x[,xvar] < pop.def["synecho", "xmax"] & x[,yvar] < pop.def["synecho", "ymax"])
+	opp[row.names(synecho), 'pop'] <- 'synecho'
+	
+	#Cluster Cryptophytes
+	x <- subset(opp, pop=='x')
+	yvar <- pop.def["crypto", "yvar"]
+	xvar <- pop.def["crypto", "xvar"]
+	crypto <- subset(x, x[,yvar] > x[,xvar] + pop.def["crypto", "lim"] & x[,xvar] > pop.def["crypto", "xmin"] & x[,yvar] > pop.def["crypto", "ymin"])
+	opp[row.names(crypto), 'pop'] <- 'crypto'
+
+	#Cluster Coccolithophores
+	x <- subset(opp, pop=='x')
+	yvar <- pop.def["cocco", "yvar"] 
+	xvar <- pop.def["cocco", "xvar"]
+	cocco <- subset(x, x[,yvar] > x[,xvar] + pop.def["cocco", "lim"] & x[,xvar] > pop.def["cocco", "xmin"] & x[,yvar] > pop.def["cocco", "ymin"]& 	x[,"chl_small"] > quantile(synecho$chl_small,0.9))
+	opp[row.names(cocco), 'pop'] <- 'cocco'
+
+	
+	#Cluster Noise
+	if(!is.null(noise)){
+		x <- subset(opp, pop=='x')
+		bg <- subset(x, chl_small < noise[1] | fsc_small < noise[2])
+		opp[row.names(bg),'pop'] <- 'noise'
+		}
+	
+	
+	return(opp)
+		
+}
+
+clusterPENegative <- function(opp, n.pop, lim, lim.debris, tol, h0, h, test=F){
+	
+	##################################################################
+	### Separate phytoplankton into 'large' and 'small' populations ###
+	##################################################################
+	x <- subset(opp, pop == 'x')
+	x <- x[,c(5,9)]
+
+	km <- flowPeaks(x, tol=tol, h0=h0, h=h)
+	
+	opp[row.names(x),'pop'] <- km$peaks.cluster 
+	
+	p1 <- median(opp[row.names(x),"chl_small"] / opp[row.names(x),"fsc_small"]) * 1.25
+	
+	if(p1 < 0.8) p1 <- 1 
+		for(i in 1:((max(km$peaks.cluster)))){
+			df <- subset(opp, pop == i)
+				if(median(df$chl_small/df$fsc_small) > p1) opp[row.names(df),'pop'] <- 'pennates'	
+				if(median(df$chl_small/df$fsc_small) < p1 & median(df$chl_small) > lim) opp[row.names(df),'pop'] <- 'y'
+				if(median(df$chl_small/df$fsc_small) < p1 & median(df$chl_small) < lim) opp[row.names(df),'pop'] <- 'z'
+			}
 
 
-clusterPop <- function(opp.filelist, save.path = getCruisePath(opp.filelist), numc = c(2,1),  pop.kmean = c("ultra","nano", "pico","pico"), pop.def.path, initialize=F, noise = c(0,0), error = 10000, min.opp = 800, min.beads = 200, min.synecho=200, lim.largeP = NULL, lim.cocco = 15000, lim.pe = 20000, diff.lim.beads = 0, diff.lim.synecho =0, lim.noise=10000, do.plot=TRUE){
+	#####################################################################
+	### cluster cells larger than 1 um Beads or Synecho (if no beads) ###
+	#####################################################################
+	y <- subset(opp, pop == 'y' & chl_small > 50000 & fsc_small > 50000) # Chl-saturating particles and largest cells assigned as 'nano'
+	opp[row.names(y),'pop'] <- 'nano'
+
+	y <- subset(opp, pop == "y")
+	y <- y[,c(5,9)]
+
+	km.big <- try(flowMeans(y, NumC=n.pop[1],MaxN=n.pop[1]*2, Standardize=F, Update='None'))
+	if(class(km.big) == 'try-error')	km.big <- flowMeans(y, NumC=n.pop[1],MaxN=n.pop[1]+2, Standardize=F, Update='None')
+	if(class(km.big) == 'try-error')	km.big <- flowMeans(y, NumC=n.pop[1],MaxN=n.pop[1]+1, Standardize=F, Update='None')
+
+	opp[row.names(y),'pop'] <- km.big@Label 
+	
+	fsc.med <- by(opp[as.numeric(opp$pop) > 0,"fsc_small"], opp[as.numeric(opp$pop) > 0,"pop"], median)
+	fsc.sort <- names(sort(fsc.med))
+	
+	if(n.pop[1]  == 2){
+				df <- subset(opp, pop == as.numeric(fsc.sort[2])); opp[row.names(df),'pop'] <- 'nano'
+				df <- subset(opp, pop == as.numeric(fsc.sort[1])); opp[row.names(df),'pop'] <- 'ultra'
+				}
+	
+	if(n.pop[1]  == 3){
+			
+			chl.med <- by(opp[as.numeric(opp$pop) > 0,"chl_small"], opp[as.numeric(opp$pop) > 0,"pop"], median)
+			diato <- chl.med/fsc.med
+			p2 <- 	median(opp[as.numeric(opp$pop) > 0,"chl_small"] / opp[as.numeric(opp$pop) > 0,"fsc_small"], na.rm=T) * 1.25
+				for( i in 1:3){	
+							df <- subset(opp, pop == as.numeric(names(diato[i])))
+							if (diato[i] > p2) opp[row.names(df),'pop'] <- 'pennates'
+							if (diato[i] < p2) opp[row.names(df),'pop'] <- 'y'
+									}
+																
+			w <- subset(opp, pop == "y")
+			w <- w[,c(5,9)]
+
+			km.big2 <- try(flowMeans(exp(w/2^14), NumC=2,MaxN=2*2, Standardize=F, Update='None'))
+			if(class(km.big2) == 'try-error')	km.big <- flowMeans(exp(w/2^14), NumC=2,MaxN=n.pop[1]+2, Standardize=F, Update='None')
+			if(class(km.big2) == 'try-error')	km.big <- flowMeans(exp(w/2^14), NumC=2,MaxN=n.pop[1]+1, Standardize=F, Update='None')
+			
+			opp[row.names(w),'pop'] <- km.big2@Label 
+	
+			fsc.med <- by(opp[as.numeric(opp$pop) > 0,"fsc_small"], opp[as.numeric(opp$pop) > 0,"pop"], median)
+			fsc.sort <- names(sort(fsc.med))
+	
+			df <- subset(opp, pop == as.numeric(fsc.sort[2])); opp[row.names(df),'pop'] <- 'nano'
+			df <- subset(opp, pop == as.numeric(fsc.sort[1])); opp[row.names(df),'pop'] <- 'ultra'
+			
+		}
+				
+	######################################################################
+	### cluster cells smaller than 1 um Beads or Synecho (if no beads) ###
+	######################################################################
+	
+	z <- subset(opp, pop == "z")
+	z <- z[,c(5,9,9)]
+
+	km.small <- flowMeans(z, NumC=n.pop[2],MaxN=n.pop[2]*2, Standardize=F, Update='None')
+	
+	opp[row.names(z),'pop'] <- km.small@Label 
+	
+		for(i in 1:as.numeric(n.pop[2])){
+			df <- subset(opp, pop == i)
+			if(nrow(df) > 2){
+				d.quant <- peaks(density(df[,"chl_small"],from=0, to=2^16, n=2^16))
+				width.chl <- round(d.quant[which(d.quant$x == max(d.quant$x)),"w"],3)
+				quant.chl <- round(d.quant[which(d.quant$x == max(d.quant$x)),"x"],3)
+				if(quant.chl < lim.debris[1]){
+							opp[row.names(df),'pop'] <- 'noise'
+							print(paste("LOW CHL,",quant.chl, "pop",i, "converted to Noise"))	
+							}
+				if(quant.chl > lim.debris[1] & width.chl < lim.debris[2]){	
+							opp[row.names(df),'pop'] <- 'noise'
+							print(paste("Narrow CHL width,",width.chl, "pop",i, "converted to Noise"))	
+							}
+				if(quant.chl > lim.debris[1] & width.chl > lim.debris[2]){
+							opp[row.names(df),'pop'] <- 'pico'
+					}
+			}else{opp[row.names(df),'pop'] <- 'noise'
+					print(paste("Only 1 cell found, pop",i, "converted to Noise"))	
+					}
+		}
+	
+	
+	if(test == T){
+		####################
+		### PLOT CLUSTER ###
+		####################
+			breaks <- 50
+				
+			hist1 <- hist(x$fsc_small, breaks=breaks, plot=FALSE)
+			hist2 <- hist(x$chl_small, breaks=breaks, plot=FALSE)
+			hist3 <- hist(y$fsc_small, breaks=breaks, plot=FALSE)
+			hist4 <- hist(y$chl_small, breaks=breaks, plot=FALSE)				
+			hist5 <- hist(w$fsc_small, breaks=breaks, plot=FALSE)
+			hist6 <- hist(w$chl_small, breaks=breaks, plot=FALSE)
+			hist7 <- hist(y$fsc_small, breaks=breaks, plot=FALSE)
+			hist8 <- hist(y$chl_small, breaks=breaks, plot=FALSE)				
+		
+			def.par <- par(no.readonly = TRUE) # save default, for resetting...
+			nf <- layout(matrix(c(2,0,5,0,1,3,4,6,8,0,11,0,7,9,10,12,14,0,16,16,13,15,16,16),4,4,byrow=TRUE), c(3,1,3,1,3), c(1,3,1,3,1,3), TRUE)	
+
+			par(mar=c(6,6,1,1))
+			plot(km,drawboundary=T,drawvor=FALSE,drawkmeans=FALSE,drawlab=TRUE)
+			mtext("Cut-off Large and Small Phytoplankton", 3,cex=0.7)
+			abline(h=lim, col='red',lwd=4)
+			par(mar=c(0,6,1,1))
+			barplot(hist1$counts, axes=FALSE, space=0, col=NA)
+			par(mar=c(6,0,1,1))
+			barplot(hist2$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
+	
+			par(mar=c(6,6,1,1))
+			plot(y[,"fsc_small"],y[,"chl_small"], col=km.big@Label,cex=0.5,xlab='fsc_small', ylab='chl_small', pch=16)
+			mtext("Large Phytoplankton", 3, cex=0.7)
+			par(mar=c(0,6,1,1))
+			barplot(hist3$counts, axes=FALSE, space=0, col=NA)
+			par(mar=c(6,0,1,1))
+			barplot(hist4$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
+		
+			par(mar=c(6,6,1,1))
+			plot(w[,"fsc_small"],w[,"chl_small"], col=km.big2@Label,cex=0.5,xlab='fsc_small', ylab='chl_small', pch=16)
+			mtext("Large Phytoplankton", 3, cex=0.7)
+			par(mar=c(0,6,1,1))
+			barplot(hist5$counts, axes=FALSE, space=0, col=NA)
+			par(mar=c(6,0,1,1))
+			barplot(hist6$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
+		
+			par(mar=c(6,6,1,1))
+			plot(z[,"fsc_small"],z[,"chl_small"], col=km.small@Label,cex=0.5,xlab='fsc_small', ylab='chl_small', pch=16)
+			mtext("Small Phytoplankton", 3, cex=0.7)
+			par(mar=c(0,6,1,1))
+			barplot(hist7$counts, axes=FALSE, space=0, col=NA)
+			par(mar=c(6,0,1,1))
+			barplot(hist8$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
+
+			par(def.par)
+	
+		}
+	
+		
+		
+	return(opp)
+}
+
+clusterPop <- function(opp.filelist, save.path = getCruisePath(opp.filelist), pop.def.path, test=F,  noise = c(0,0), n.pop = c(3,3), tol=0.1,h0=0.5, h=1.0, min.opp = 800, min.beads = 200, min.synecho=200, lim.beads = 0, lim.synecho =0, lim.debris=c(10000,4000), save.plot=F){
 	
 
 #library(cluster)	
@@ -30,17 +235,6 @@ require(IDPmisc)
 # read pop.def.tab
 pop.def <- readPopDef(pop.def.path) 
 	
-# list of phytoplankton populations
-phyto <- c("noise","beads", "cocco", "crypto","synecho", pop.kmean) 
-	
-	numc1 <- numc[1]
-	numc2 <- numc[2]
-	
-	iter.max <- 300 # kmeans calculation
-	nstart <- 50 # random points to start flowMeans
-	breaks <- 25 # histograms
-	do <- 2
-
 	
 prev.file <- opp.filelist[1]
 
@@ -48,7 +242,7 @@ prev.file <- opp.filelist[1]
 ### check that there is no cluster settings already ###
 #################################################
 
-if(initialize){
+if(test){
 
 ###################
 ###################
@@ -56,211 +250,45 @@ if(initialize){
 ###################	
 ###################
 	
-	print(paste("Clustering the first file in the list:", prev.file))
+	print(paste("Initialization", prev.file))
 	
 	opp <- readSeaflow(prev.file) 
-	opp$pop <- 0
+	opp$pop <- "x"
 
-	lim <- 0.5*2^16
+	lim <- 0.25*2^16 
 
 	###############################
 	### clustering pop.baseline ###
 	###############################
 	
-	#Cluster Beads
-	x <- subset(opp, pop==0)
-	beads <- subset(x, pe > 65500) ## PE-saturated particles assigned as 'beads
-	opp[row.names(beads),'pop'] <- 2
-	x <- subset(opp, pop==0)
-	xvar <- pop.def["beads", "xvar"]
-	yvar <- pop.def["beads", "yvar"]
-	beads <- subset(x, x[,yvar] > 0.5*x[,xvar] + pop.def["beads", "lim"] & x[,xvar] > pop.def["beads", "xmin"] & x[,yvar] > pop.def["beads", "ymin"] & x[,xvar] < pop.def["beads", "xmax"] & x[,yvar] < pop.def["beads", "ymax"])
-	opp[row.names(beads),'pop'] <- 2
+ 	opp <- clusterPopBaseline(opp, pop.def, noise)
+	
+	beads <- subset(opp, pop == "beads")
+	synecho <- subset(opp, pop == "synecho")
 
 	if(nrow(beads) > min.beads){
-		lim <- quantile(beads$chl_small,0.1) -diff.lim.beads
-		print(paste("CHL cut-off between particles 'smaller' and 'larger' than Beads:", lim))
+		lim <- quantile(beads$chl_small,0.1) + lim.beads
+	print(paste("cut-off between particles 'smaller' and 'larger' than Beads:", lim))
 		}
-	
-	#Cluster Synecho
-	x <- subset(opp, pop==0)
-	yvar <- pop.def["synecho", "yvar"]
-	xvar <- pop.def["synecho", "xvar"]
-	synecho <- subset(x, x[,yvar] > x[,xvar] - pop.def["synecho", "lim"] & x[,xvar] > pop.def["synecho", "xmin"] & x[,yvar] > pop.def["synecho", "ymin"] & x[,xvar] < pop.def["synecho", "xmax"] & x[,yvar] < pop.def["synecho", "ymax"])
-	opp[row.names(synecho), 'pop'] <- 5
 
 	if(nrow(beads) < min.beads & nrow(synecho) > min.synecho){
-		lim <- median(synecho$chl_small) -diff.lim.synecho
-		print(paste("CHL cut-off between particles 'smaller' and 'larger' than Synecho:", lim))
-
-			}
-	
-	#Cluster Cryptophytes
-	x <- subset(opp, pop==0)
-	yvar <- pop.def["crypto", "yvar"]
-	xvar <- pop.def["crypto", "xvar"]
-	crypto <- subset(x, x[,yvar] > x[,xvar] + pop.def["crypto", "lim"] & x[,xvar] > pop.def["crypto", "xmin"] & x[,yvar] > pop.def["crypto", "ymin"])
-	opp[row.names(crypto), 'pop'] <- 4
-
-
-	#Cluster Large Particles
-	if(!is.null(lim.largeP)){
-		x <- subset(opp, pop==0)
-		hetero <- subset(x, x[,"fsc_small"] > 1.5*x[,"chl_small"] + lim.largeP)
-		opp[row.names(hetero), 'pop'] <- 1
-		}
-
-
-	#Cluster Coccolithophores
-	
-	x <- subset(opp, pop==0)
-	yvar <- pop.def["cocco", "yvar"] 
-	xvar <- pop.def["cocco", "xvar"]
-	cocco <- subset(x, x[,yvar] > x[,xvar] + pop.def["cocco", "lim"] & x[,xvar] > pop.def["cocco", "xmin"] & x[,yvar] > pop.def["cocco", "ymin"]& 	x[,"chl_small"] > lim.cocco)
-	opp[row.names(cocco), 'pop'] <- 3
-
-	
-	#Cluster Noise
-	if(!is.null(noise)){
-		x <- subset(opp, pop==0)
-		bg <- subset(x, chl_small < noise[1] | fsc_small < noise[2])
-		opp[row.names(bg),'pop'] <- 1
-		}
-	
+		lim <- median(synecho$chl_small) + lim.synecho
+	print(paste("cut-off between particles 'smaller' and 'larger' than Synecho:", lim))
+		}	
 
 	###############################################
-	####   K-means pe-negative phytoplankton   ####
+	#### clustering pe-negative phytoplankton  ####
 	###############################################
 
-	### cluster phytoplankton into 'large' and 'small' cell size populations
-	x <- subset(opp, pop == 0 & chl_small > 50000 & fsc_small > 55000) # Chl-saturating particles and largest cells assigned as 'nano'
-	opp[row.names(x),'pop'] <- 5 + numc1
-
-	x <- subset(opp, pop == 0)
-	x <- x[,c(5,9)]
-
-	km <- flowPeaks(x, tol=0.1, h0=0.5, h=1.5)
-
-	opp[row.names(x),'pop'] <- km$peaks.cluster + 100
-	
-		for(i in 1:((max(km$peaks.cluster)))){
-			df <- subset(opp, pop == i+100)
-			print(paste("cluster",i,"RED= ", median(df$chl_small), "; FSC=",median(df$fsc_small)))
-				if(median(df$chl_small) > lim & median(df$fsc_small) > lim) opp[row.names(df),'pop'] <- "y"
-				else opp[row.names(df),'pop'] <- "z"	
-			}
-
-
-	### cluster cells larger than 1 um Beads or Synecho (if no beads)
-	y <- subset(opp, pop == "y")
-	y <- y[,c(5,5,5,9)]
-
-	prev.km.big <- try(flowMeans(y, NumC=numc1,MaxN=numc1+numc2+2, nstart=nstart, Standardize=F, Update='None'))
-	if(class(prev.km.big) == "try-error") prev.km.big <- try(flowMeans(y, NumC=numc1,MaxN=numc1+numc2+1, nstart=nstart, Standardize=F, Update='None'))
-	if(class(prev.km.big) == "try-error") prev.km.big <- try(flowMeans(y, NumC=numc1,MaxN=numc1+numc2, nstart=nstart, Standardize=F, Update='None'))
-	
-	opp[row.names(y),'pop'] <- prev.km.big@Label + 100
-	
-	fsc.sort <- names(sort(by(opp[as.numeric(opp$pop) > 100,"fsc_small"], opp[as.numeric(opp$pop) > 100,"pop"], median)))
-
-		for(i in 1:numc1){
-			df <- subset(opp, pop == as.numeric(fsc.sort[i]))
-			opp[row.names(df),'pop'] <- i+5
-			}
-	
-
-	### cluster cells smaller than 1 um Beads or Synecho (if no beads)
-	z <- subset(opp, pop == "z")
-	z <- z[,c(5,9)]
-
-		d <- peaks(density(z[,"fsc_small"]))
-			
-	if(nrow(d) < 1){
-		print("Electrical noise detected!")
-		prev.km.small <- flowPeaks(z, tol=0.3, h0=0.5)
-		}else prev.km.small <- flowPeaks(z, tol=0.1, h0=0.5, h=1.5)
-
-	opp[row.names(z),'pop'] <- prev.km.small$peaks.cluster + 100
-	
-		for(i in 1:(max(prev.km.small$peaks.cluster))){
-			df <- subset(opp, pop == (i+100))
-				if(nrow(df) > 2){
-				d.quant <- peaks(density(df[,"chl_small"],from=0, to=2^16, n=2^16))
-				quant.chl <- round(d.quant[which(d.quant$x == max(d.quant$x)),"w"],3)
-			print(paste("Width Red Fluo Peaks=", quant.chl, ", OPP number=", nrow(df)))
-			if(quant.chl < lim.noise){
-							opp[row.names(df),'pop'] <- 1
-							print(paste("pop", i+numc1+5, "converts to", 1))
-							# opp[row.names(subset(df, chl_small > lim2)), 'pop'] <- numc1 + i + 5
-
-					}else{
-							opp[row.names(df),'pop'] <- numc1 + 1 + 5
-							}
-				}else{
-						opp[row.names(df),'pop'] <- 1
-						}
-		}
-
-	####################
-	### PLOT CLUSTER ###
-	####################
-		
-	hist1 <- hist(x$fsc_small, breaks=breaks, plot=FALSE)
-	hist2 <- hist(x$chl_small, breaks=breaks, plot=FALSE)
-	hist3 <- hist(y$fsc_small, breaks=breaks, plot=FALSE)
-	hist4 <- hist(y$chl_small, breaks=breaks, plot=FALSE)
-	hist5 <- hist(z$fsc_small, breaks=breaks, plot=FALSE)
-	hist6 <- hist(z$chl_small, breaks=breaks, plot=FALSE)
-		
-	def.par <- par(no.readonly = TRUE) # save default, for resetting...
-	nf <- layout(matrix(c(2,0,5,0,1,3,4,6,8,0,11,0,7,9,10,12,14,0,16,16,13,15,16,16),4,4,byrow=TRUE), c(3,1,3,1,3), c(1,3,1,3,1,3), TRUE)	
-
-	par(mar=c(6,6,1,1))
-	plot(km,drawboundary=T,drawvor=FALSE,drawkmeans=FALSE,drawlab=TRUE)
-	mtext("Cut-off Large and Small Phytoplankton", 3,cex=0.7)
-	abline(h=lim,col='red',lwd=4)
-	abline(v=lim,col='red',lwd=4)
-	par(mar=c(0,6,1,1))
-	barplot(hist1$counts, axes=FALSE, space=0, col=NA)
-	par(mar=c(6,0,1,1))
-	barplot(hist2$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
-	
-	mtext(paste("file: ",flowPhyto:::.getYearDay(prev.file),'/',basename(prev.file), sep=""), side=3, line=-4, outer=T,cex=1.2)
-
-	par(mar=c(6,6,1,1))
-	plot(y[,"fsc_small"],y[,"chl_small"], col=prev.km.big@Label,cex=0.5,xlab='fsc_small', ylab='chl_small')
-	mtext("Large Phytoplankton", 3, cex=0.7)
-	par(mar=c(0,6,1,1))
-	barplot(hist3$counts, axes=FALSE, space=0, col=NA)
-	par(mar=c(6,0,1,1))
-	barplot(hist4$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
-		
-	par(mar=c(6,6,1,1))
-	plot(prev.km.small,drawboundary=T,drawvor=FALSE,drawkmeans=FALSE,drawlab=TRUE)
-	mtext("Small Phytoplankton", 3, cex=0.7)
-	par(mar=c(0,6,1,1))
-	barplot(hist5$counts, axes=FALSE, space=0, col=NA)
-	par(mar=c(6,0,1,1))
-	barplot(hist6$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
-
-	par(def.par)
-
+	opp <- clusterPENegative(opp, n.pop, lim, lim.debris, tol, h0, h, test=test)
 
 	go <- .nextplot()	
 	
-	if(go == 1) do <- 0
-		
-
-	if(go == 0){
+	if(go == 1){
 
 	######################
 	### SAVE SETTINGS  ###
 	######################
-
-	for(i in 1:(length(phyto))){
-		p <- subset(opp, pop == i)
-		opp[row.names(p),'pop'] <- phyto[i]
-		}
 	
 	all.settings <- aggregate(opp[,c("fsc_small", "chl_small")], FUN=median, by=list(opp$pop))		
 	settings <- all.settings[all.settings$Group.1 == "nano" | all.settings$Group.1 == "ultra" | all.settings$Group.1 == "synecho",]
@@ -271,6 +299,7 @@ if(initialize){
 	##################
 	### PLOT PHYTO ###
 	##################
+	breaks <- 50
 		
 	hist1 <- hist(opp$fsc_small, breaks=seq(0,2^16, by=2^16/breaks), plot=FALSE)
 	hist2 <- hist(opp$chl_small, breaks=seq(0,2^16, by=2^16/breaks), plot=FALSE)
@@ -312,21 +341,6 @@ if(initialize){
 
 	par(def.par)
 
-
-
-
-
-	#######################
-	### Keep settings ? ###
-	#######################
-	do <- .Prompt()	
-	
-	if(do == 1) stop
-
-	if(do == 0){
-		system(paste("rm ",save.path,"prev.settings",sep=""))
-		stop
-		} 
 	}
 	
 }
@@ -336,35 +350,21 @@ if(initialize){
 ##### ALL CRUISES FILES based on prev FILE ####
 ################################################
 ################################################
-if(initialize == F){ 
+if(test == F){ 
 	lim <- 0.5*2^16
-	}
-	
-if(do == 2){ 
-
-
-outlier.table <- try(read.csv(paste(save.path,"c.outliers",sep="")),silent=T)
-	
-	if(class(outlier.table) == "try-error"){
-		outlier.table <- data.frame(day=NA,file=NA)
-		write.csv(outlier.table, file=paste(save.path,"c.outliers", sep=""), row.names=FALSE, quote=FALSE)
-		}
-
 
 for (file in opp.filelist){
 	opp <- readSeaflow(file)
-	opp$pop <- 0
+	opp$pop <- 'x'
 
 	day <- flowPhyto:::.getYearDay(file)
 	
-	## Check number OPP before Clustering 
+	##########################################
+	### Check number OPP before Clustering ### 
+	##########################################
 	
 	if(nrow(opp[opp[,"chl_small"]>20000,]) < min.opp){
 		print(paste("not enough OPP for clustering in:",file))
-		outlier <- data.frame(day=day, file=getFileNumber(file))
-		outlier.table <- rbind(outlier.table, outlier)
-		write.csv(outlier.table, file=paste(save.path,"c.outliers", sep=""), row.names=FALSE, quote=FALSE)
-		
 		opp$pop <- 'noise'
 		write.table(opp$pop, paste(save.path, day,"/",basename(file),".",getFileNumber(file),'-class.vct',sep=""), row.names=FALSE, col.names='pop', quote=FALSE)
 			
@@ -381,286 +381,62 @@ for (file in opp.filelist){
 		
 		next
 		}
-					
+	
 		
-
 	###############################
 	### clustering pop.baseline ###
 	###############################
+
 	print(paste("clustering", file))
 
-	#Cluster Beads
-	x <- subset(opp, pop==0)
-	beads <- subset(x, pe > 65500) ## PE-saturated particles assigned as 'beads
-	opp[row.names(beads),'pop'] <- 2
-	xvar <- pop.def["beads", "xvar"]
-	yvar <- pop.def["beads", "yvar"]
-	beads <- subset(x, x[,yvar] > 0.5*x[,xvar] + pop.def["beads", "lim"] & x[,xvar] > pop.def["beads", "xmin"] & x[,yvar] > pop.def["beads", "ymin"] & x[,xvar] < pop.def["beads", "xmax"] & x[,yvar] < pop.def["beads", "ymax"])
-	opp[row.names(beads),'pop'] <- 2
+ 	opp <- clusterPopBaseline(opp, pop.def, noise)
 
-		if(nrow(beads) > min.beads){
-			prev.beads <- beads
-			lim <- quantile(beads$chl_small,0.1) -diff.lim.beads
-			}
-			else print("not enough beads")
-	
+	beads <- subset(opp, pop == "beads")
+	synecho <- subset(opp, pop == "synecho")
 
-	#Cluster Synecho
-	x <- subset(opp, pop==0)
-	yvar <- pop.def["synecho", "yvar"]
-	xvar <- pop.def["synecho", "xvar"]
-	synecho <- subset(x, x[,yvar] > x[,xvar] - pop.def["synecho", "lim"] & x[,xvar] > pop.def["synecho", "xmin"] & x[,yvar] > pop.def["synecho", "ymin"] & x[,xvar] < pop.def["synecho", "xmax"] & x[,yvar] < pop.def["synecho", "ymax"])
-	opp[row.names(synecho), 'pop'] <- 5
-
-		if(nrow(synecho) > min.synecho){
-			lim.synecho <- median(synecho$chl_small)-diff.lim.synecho
-				if(nrow(beads) < min.beads) lim <- lim.synecho
-			}
-		if(nrow(beads) < min.beads & nrow(synecho) < min.synecho){
-			print("too few Synecho")
-			}
-
-	#Cluster Cryptophytes
-	x <- subset(opp, pop==0)
-	yvar <- pop.def["crypto", "yvar"]
-	xvar <- pop.def["crypto", "xvar"]
-	crypto <- subset(x, x[,yvar] > x[,xvar] + pop.def["crypto", "lim"] & x[,xvar] > pop.def["crypto", "xmin"] & x[,yvar] > pop.def["crypto", "ymin"])
-	opp[row.names(crypto), 'pop'] <- 4
-	
-	
-	#Cluster "heterotrophs"
-	if(!is.null(lim.largeP)){
-		x <- subset(opp, pop==0)
-		hetero <- subset(x, x[,"fsc_small"] > 1.5*x[,"chl_small"] + lim.largeP)
-		opp[row.names(hetero), 'pop'] <- 1
+	if(nrow(beads) > min.beads){
+		lim <- quantile(beads$chl_small,0.1) + lim.beads
+	print(paste("cut-off between particles 'smaller' and 'larger' than Beads:", lim))
 		}
 
-	#Cluster Coccolithophores
-	x <- subset(opp, pop==0)
-	yvar <- pop.def["cocco", "yvar"] 
-	xvar <- pop.def["cocco", "xvar"]
-	cocco <- subset(x, x[,yvar] > x[,xvar] + pop.def["cocco", "lim"] & x[,xvar] > pop.def["cocco", "xmin"] & x[,yvar] > pop.def["cocco", "ymin"]& 	x[,"chl_small"] > lim.cocco)
-	opp[row.names(cocco), 'pop'] <- 3
-
-
-	#Cluster Noise
-	if(!is.null(noise)){
-		x <- subset(opp, pop==0)
-		bg <- subset(x, chl_small < noise[1] | fsc_small < noise[2])
-		opp[row.names(bg),'pop'] <- 1
+	if(nrow(beads) < min.beads & nrow(synecho) > min.synecho){
+		lim <- median(synecho$chl_small) + lim.synecho
+	print(paste("cut-off between particles 'smaller' and 'larger' than Synecho:", lim))
 		}
-
-			
-	########################
-	#####   K-means    #####
-	########################
-	
-	#### cluster phytoplankton into a number of populations specified in NUMC
-	x <- subset(opp, pop == 0 & chl_small > 50000 & fsc_small > 55000) # Chl-saturating particles and largest cells assigned as 'nano'
-	opp[row.names(x),'pop'] <- 5 + numc1
-
-	x <- subset(opp, pop == 0)
-	x <- x[,c(5,9)]
-
-	km <- flowPeaks(x, tol=0.1, h0=0.5, h=1.5)
-
-	opp[row.names(x),'pop'] <- km$peaks.cluster + 100
-	
-		for(i in 1:((max(km$peaks.cluster)))){
-			df <- subset(opp, pop == i+100)
-			print(paste("cluster",i,"RED= ", median(df$chl_small), "; FSC=",median(df$fsc_small)))
-				if(median(df$chl_small) > lim & median(df$fsc_small) > lim) opp[row.names(df),'pop'] <- "y"
-				else opp[row.names(df),'pop'] <- "z"	
-			}
-
-
-	#### cluster cells larger than 1 um Beads or Synecho (if no beads)
-	y <- subset(opp, pop == "y")
-	y <- y[,c(5,5,5,9)]
-	
-	prev.km.big <- try(flowMeans(y, NumC=numc1,MaxN=numc1+numc2+2, nstart=nstart, Standardize=F, Update='None'),silent=F)
-	if(class(prev.km.big) == "try-error") prev.km.big <- try(flowMeans(y, NumC=numc1,MaxN=numc1+numc2+1, nstart=nstart, Standardize=F, Update='None'))
-	if(class(prev.km.big) == "try-error") prev.km.big <- try(flowMeans(y, NumC=numc1,MaxN=numc1+numc2, nstart=nstart, Standardize=F, Update='None'))
-	
-			if(class(prev.km.big) == "try-error"){
-				print("flowMeans error, FLAGGED FILE")
-				outlier <- data.frame(day=day, file=getFileNumber(file))
-				outlier.table <- rbind(outlier.table, outlier)
-				write.csv(outlier.table, file=paste(save.path,"c.outliers", sep=""), row.names=FALSE, quote=FALSE)
 				
+	###############################################
+	#### clustering pe-negative phytoplankton  ####
+	###############################################
+	
+	opp1 <- clusterPENegative(opp, n.pop, lim, lim.debris, tol, h0, h, test=F)	
+	if(class(opp1) == "try-error"){
+				print("Error in clustering PE negative cells, FLAGGED FILE")
 				opp$pop <- 'noise'
 				write.table(opp$pop, paste(save.path, day,"/",basename(file),".",getFileNumber(file),'-class.vct',sep=""), row.names=FALSE, col.names='pop', quote=FALSE)
 
 				next
 				}
-	opp[row.names(y),'pop'] <- prev.km.big@Label + 100
-							
-	fsc.sort <- names(sort(by(opp[as.numeric(opp$pop) > 100,"fsc_small"], opp[as.numeric(opp$pop) > 100,"pop"], median)))
-
-		for(i in 1:numc1){
-			df <- subset(opp, pop == as.numeric(fsc.sort[i]))
-			opp[row.names(df),'pop'] <- i+5
-			}
 	
-	
-	#### cluster cells smaller than 1 um Beads or Synecho (if no beads)
-	z <- subset(opp, pop == "z")
-	z <- z[,c(5,9)]
-
-	if(nrow(z) < 3){
-		print(paste("found only", nrow(z), "small cells, FLAGGED FILE"))
-			outlier <- data.frame(day=day, file=getFileNumber(file))
-			outlier.table <- rbind(outlier.table, outlier)
-			write.csv(outlier.table, file=paste(save.path,"c.outliers", sep=""), row.names=FALSE, quote=FALSE)
-			
-			png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".cluster.class.gif", sep=""),width=9, height=12, unit='in', res=100)
 		
-				hist1 <- hist(x$fsc_small, breaks=breaks, plot=FALSE)
-				hist2 <- hist(x$chl_small, breaks=breaks, plot=FALSE)
-				hist3 <- hist(y$fsc_small, breaks=breaks, plot=FALSE)
-				hist4 <- hist(y$chl_small, breaks=breaks, plot=FALSE)
-			
-				def.par <- par(no.readonly = TRUE) # save default, for resetting...
-				nf <- layout(matrix(c(2,0,5,0,1,3,4,6,8,0,11,0,7,9,10,12,14,0,16,16,13,15,16,16),4,4,byrow=TRUE), c(3,1,3,1,3), c(1,3,1,3,1,3), TRUE)	
-
-				par(mar=c(6,6,1,1))
-				plot(km,drawboundary=T,drawvor=FALSE,drawkmeans=FALSE,drawlab=TRUE)
-				mtext("Cut-off Large and Small Phytoplankton", 3,cex=0.7)
-				mtext(paste(file), side=3, line=-2, outer=T)
-				abline(h=lim,col='red',lwd=4)
-				par(mar=c(0,6,1,1))
-				barplot(hist1$counts, axes=FALSE, space=0, col=NA)
-				par(mar=c(6,0,1,1))
-				barplot(hist2$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
-	
-				par(mar=c(6,6,1,1))
-				plot(y[,"fsc_small"],y[,"chl_small"], col=prev.km.big@Label,cex=0.5,xlab='fsc_small', ylab='chl_small')
-				mtext("Large Phytoplankton", 3, cex=0.7)
-				par(mar=c(0,6,1,1))
-				barplot(hist3$counts, axes=FALSE, space=0, col=NA)
-				par(mar=c(6,0,1,1))
-				barplot(hist4$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
-
-				mtext(paste("file: ",flowPhyto:::.getYearDay(file),'/',basename(file), sep=""), side=3, line=-4, outer=T,cex=1.2)
-			
-			dev.off()
-			
-				}
-	
-	if(nrow(z) > 3) {
-		
-		d <- peaks(density(z[,"fsc_small"]))
-
-		if(nrow(d) < 1){
-		print("Electrical noise detected!")
-		prev.km.small <- flowPeaks(z, tol=0.3, h0=0.5)
-		}else prev.km.small <- try(flowPeaks(z, tol=0.1, h0=0.5, h=1.5))
-
-	    if(class(prev.km.small) == "try-error"){
-				print("flowPeaks error, FLAGGED FILE")
-				outlier <- data.frame(day=day, file=getFileNumber(file))
-				outlier.table <- rbind(outlier.table, outlier)
-				write.csv(outlier.table, file=paste(save.path,"c.outliers", sep=""), row.names=FALSE, quote=FALSE)
-				
-			png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".cluster.class.gif", sep=""),width=9, height=12, unit='in', res=100)
-		
-				hist1 <- hist(x$fsc_small, breaks=breaks, plot=FALSE)
-				hist2 <- hist(x$chl_small, breaks=breaks, plot=FALSE)
-				hist5 <- hist(z$fsc_small, breaks=breaks, plot=FALSE)
-				hist6 <- hist(z$chl_small, breaks=breaks, plot=FALSE)
-		
-				def.par <- par(no.readonly = TRUE) # save default, for resetting...
-				nf <- layout(matrix(c(2,0,5,0,1,3,4,6,8,0,11,0,7,9,10,12,14,0,16,16,13,15,16,16),4,4,byrow=TRUE), c(3,1,3,1,3), c(1,3,1,3,1,3), TRUE)	
-
-				par(mar=c(6,6,1,1))
-				plot(km,drawboundary=T,drawvor=FALSE,drawkmeans=FALSE,drawlab=TRUE)
-				mtext("Cut-off Large and Small Phytoplankton", 3,cex=0.7)
-				mtext(paste(file), side=3, line=-2, outer=T)
-				abline(v=lim,col='red',lwd=4)
-				par(mar=c(0,6,1,1))
-				barplot(hist1$counts, axes=FALSE, space=0, col=NA)
-				par(mar=c(6,0,1,1))
-				barplot(hist2$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
-	
-				mtext(paste("file: ",flowPhyto:::.getYearDay(file),'/',basename(file), sep=""), side=3, line=-4, outer=T,cex=1.2)
-
-				par(mar=c(6,6,1,1))
-				plot(prev.km.small,drawboundary=T,drawvor=FALSE,drawkmeans=FALSE,drawlab=TRUE)
-				mtext("Small Phytoplankton", 3, cex=0.7)
-				par(mar=c(0,6,1,1))
-				barplot(hist5$counts, axes=FALSE, space=0, col=NA)
-				par(mar=c(6,0,1,1))
-				barplot(hist6$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
-
-			dev.off()
-			
-		par(def.par)
-
-				}
-
-		if(class(prev.km.small) != "try-error"){
-
-		opp[row.names(z),'pop'] <- prev.km.small$peaks.cluster + 100
-	
-		for(i in 1:(max(prev.km.small$peaks.cluster))){
-			df <- subset(opp, pop == (i+100))
-				if(nrow(df) > 2){
-				d.quant <- peaks(density(df[,"chl_small"],from=0, to=2^16, n=2^16))
-				quant.chl <- round(d.quant[which(d.quant$x == max(d.quant$x)),"w"],3)
-			if(quant.chl < lim.noise){
-							opp[row.names(df),'pop'] <- 1
-							# opp[row.names(subset(df, chl_small > lim2)), 'pop'] <- numc1 + i + 5
-
-					}else{
-							opp[row.names(df),'pop'] <- numc1 + 1 + 5
-							}
-				}else{
-					opp[row.names(df),'pop'] <- 1
-					}
-			}
-		}
-	}
 					
 	#################
 	### class vct ###
 	#################
-
-	for(i in 1:(length(phyto))){
-		p <- subset(opp, pop == i)
-		opp[row.names(p),'pop'] <- phyto[i]
-			}
-		
+	opp <- opp1
 	write.table(opp$pop, paste(save.path, day,"/",basename(file),".",getFileNumber(file),'-class.vct',sep=""), row.names=FALSE, col.names='pop', quote=FALSE)
 	
-	###############				
-	###	flagged ###
-	###############
-	prev.settings <- read.delim(paste(save.path,"prev.settings",sep=""))
-
-	all.settings <- aggregate(opp[,c("fsc_small", "chl_small")], FUN=median, by=list(opp$pop))		
-	settings <- all.settings[all.settings$Group.1 == "nano" | all.settings$Group.1 == "ultra" | all.settings$Group.1 == "synecho",]
 	
-	if(any(abs(settings[,"fsc_small"]-prev.settings[,"fsc_small"])) > error | 
-		any(abs(settings[,"chl_small"]-prev.settings[,"chl_small"])) > error) {
-			flag <- 1
-			print("FLAGGED FILE")
-			outlier <- data.frame(day=day, file=getFileNumber(file))
-			outlier.table <- rbind(outlier.table, outlier)
-			write.csv(outlier.table, file=paste(save.path,"c.outliers", sep=""), row.names=FALSE, quote=FALSE)
-
-		}else{
-			flag <- 0
-			write.delim(settings, paste(save.path,"prev.settings",sep=""))
-		}
-
-
+	
 	############
 	### PLOT ###
 	############
-	if(do.plot==TRUE){
+
+	if(save.plot==TRUE){
 
 	png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".class.gif", sep=""),width=9, height=12, unit='in', res=100)
 	if(class(opp) != "try-error"){
+	
+	breaks <- 50
 
 	hist1 <- hist(opp$fsc_small, breaks=seq(0,2^16, by=2^16/breaks), plot=FALSE)
 	hist2 <- hist(opp$chl_small, breaks=seq(0,2^16, by=2^16/breaks), plot=FALSE)
@@ -673,7 +449,6 @@ for (file in opp.filelist){
 
 	par(mar=c(6,6,1,1))
 	plotCytogram(opp, 'fsc_small', 'chl_small', pop.def=pop.def)
-			if(flag == 1) mtext("flagged !", side=3, outer=T, line=-3,cex=3,col='red')
 	par(mar=c(0,6,1,1))
 	barplot(hist1$counts, axes=FALSE, space=0, col=NA)
 	par(mar=c(6,0,1,1))
@@ -713,7 +488,8 @@ for (file in opp.filelist){
 	####################
 	### EMPTY MEMORY ###	
 	####################	
-	rm(opp, noise, synecho, crypto, beads, cocco, hetero, prev.km, prev.km.big, prev.km.small, p, df, x, y, z, hist1, hist2, hist3, hist4)	
+
+	rm(opp, noise, synecho, crypto, beads, cocco, hetero, p, df, opp1, hist1, hist2, hist3, hist4)	
 	}
 
 	print("Combining census.tab ...")
