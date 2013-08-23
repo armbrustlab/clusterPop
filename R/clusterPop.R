@@ -5,11 +5,11 @@
 			return(x)
 			}
 
-clusterPopBaseline <- function(opp, pop.def, noise){
+clusterPopBaseline <- function(opp, pop.def, lim.largeP, noise){
 	
 	#Cluster Beads
 	x <- subset(opp, pop=='x')
-	beads <- subset(x, pe > 65500) ## PE-saturated particles assigned as 'beads
+	beads <- subset(x, pe == max(opp$pe, na.rm=T)) ## PE-saturated particles assigned as 'beads
 	opp[row.names(beads),'pop'] <- 'beads'
 	
 	x <- subset(opp, pop=='x')
@@ -39,6 +39,13 @@ clusterPopBaseline <- function(opp, pop.def, noise){
 	cocco <- subset(x, x[,yvar] > x[,xvar] + pop.def["cocco", "lim"] & x[,xvar] > pop.def["cocco", "xmin"] & x[,yvar] > pop.def["cocco", "ymin"]& 	x[,"chl_small"] > quantile(synecho$chl_small,0.9))
 	opp[row.names(cocco), 'pop'] <- 'cocco'
 
+	#Cluster Large Particles
+	if(!is.null(lim.largeP)){
+		x <- subset(opp, pop=='x')
+		hetero <- subset(x, x[,"fsc_small"] > 1.5*x[,"chl_small"] + lim.largeP)
+		opp[row.names(hetero), 'pop'] <- 'noise'
+		}
+
 	
 	#Cluster Noise
 	if(!is.null(noise)){
@@ -66,7 +73,7 @@ clusterPENegative <- function(opp, n.pop, lim, lim.debris, tol, h0, h, test=F){
 	
 	p1 <- median(opp[row.names(x),"chl_small"] / opp[row.names(x),"fsc_small"]) * 1.25
 	
-	if(p1 < 0.8) p1 <- 1 
+	if(p1 < 1) p1 <- 1.1 
 		for(i in 1:((max(km$peaks.cluster)))){
 			df <- subset(opp, pop == i)
 				if(median(df$chl_small/df$fsc_small) > p1) opp[row.names(df),'pop'] <- 'pennates'	
@@ -78,14 +85,15 @@ clusterPENegative <- function(opp, n.pop, lim, lim.debris, tol, h0, h, test=F){
 	#####################################################################
 	### cluster cells larger than 1 um Beads or Synecho (if no beads) ###
 	#####################################################################
-	y <- subset(opp, pop == 'y' & chl_small > 50000 & fsc_small > 50000) # Chl-saturating particles and largest cells assigned as 'nano'
+	y <- subset(opp[which(opp$pop == 'y'),], chl_small > 50000 | fsc_small > 50000) # High Chl- and Fsc-particles assigned as 'nano'
 	opp[row.names(y),'pop'] <- 'nano'
 
 	y <- subset(opp, pop == "y")
 	y <- y[,c(5,9)]
-
+	
+	if(nrow(y) > 10){
 	km.big <- try(flowMeans(y, NumC=n.pop[1],MaxN=n.pop[1]*2, Standardize=F, Update='None'))
-	if(class(km.big) == 'try-error')	km.big <- flowMeans(y, NumC=n.pop[1],MaxN=n.pop[1]+2, Standardize=F, Update='None')
+	if(class(km.big) == 'try-error')	km.big <- try(flowMeans(y, NumC=n.pop[1],MaxN=n.pop[1]+2, Standardize=F, Update='None'))
 	if(class(km.big) == 'try-error')	km.big <- flowMeans(y, NumC=n.pop[1],MaxN=n.pop[1]+1, Standardize=F, Update='None')
 
 	opp[row.names(y),'pop'] <- km.big@Label 
@@ -103,7 +111,9 @@ clusterPENegative <- function(opp, n.pop, lim, lim.debris, tol, h0, h, test=F){
 			chl.med <- by(opp[as.numeric(opp$pop) > 0,"chl_small"], opp[as.numeric(opp$pop) > 0,"pop"], median)
 			diato <- chl.med/fsc.med
 			p2 <- 	median(opp[as.numeric(opp$pop) > 0,"chl_small"] / opp[as.numeric(opp$pop) > 0,"fsc_small"], na.rm=T) * 1.25
-				for( i in 1:3){	
+			if(p2 < 1) p2 <- 1.1
+	
+					for( i in 1:3){	
 							df <- subset(opp, pop == as.numeric(names(diato[i])))
 							if (diato[i] > p2) opp[row.names(df),'pop'] <- 'pennates'
 							if (diato[i] < p2) opp[row.names(df),'pop'] <- 'y'
@@ -112,9 +122,9 @@ clusterPENegative <- function(opp, n.pop, lim, lim.debris, tol, h0, h, test=F){
 			w <- subset(opp, pop == "y")
 			w <- w[,c(5,9)]
 
-			km.big2 <- try(flowMeans(exp(w/2^14), NumC=2,MaxN=2*2, Standardize=F, Update='None'))
-			if(class(km.big2) == 'try-error')	km.big <- flowMeans(exp(w/2^14), NumC=2,MaxN=n.pop[1]+2, Standardize=F, Update='None')
-			if(class(km.big2) == 'try-error')	km.big <- flowMeans(exp(w/2^14), NumC=2,MaxN=n.pop[1]+1, Standardize=F, Update='None')
+			km.big2 <- try(flowMeans(exp(w/2^13), NumC=2,MaxN=2*2, Standardize=F, Update='None'))
+			if(class(km.big2) == 'try-error')	km.big <- try(flowMeans(exp(w/2^13), NumC=2,MaxN=n.pop[1]+2, Standardize=F, Update='None'))
+			if(class(km.big2) == 'try-error')	km.big <- flowMeans(exp(w/2^13), NumC=2,MaxN=n.pop[1]+1, Standardize=F, Update='None')
 			
 			opp[row.names(w),'pop'] <- km.big2@Label 
 	
@@ -125,16 +135,19 @@ clusterPENegative <- function(opp, n.pop, lim, lim.debris, tol, h0, h, test=F){
 			df <- subset(opp, pop == as.numeric(fsc.sort[1])); opp[row.names(df),'pop'] <- 'ultra'
 			
 		}
-				
+	}			
 	######################################################################
 	### cluster cells smaller than 1 um Beads or Synecho (if no beads) ###
 	######################################################################
 	
 	z <- subset(opp, pop == "z")
 	z <- z[,c(5,9,9)]
-
-	km.small <- flowMeans(z, NumC=n.pop[2],MaxN=n.pop[2]*2, Standardize=F, Update='None')
 	
+	if(nrow(z) > 10){
+	km.small <- try(flowMeans(z, NumC=n.pop[2],MaxN=n.pop[2]*2, Standardize=F, Update='None'))
+	if(class(km.small) == 'try-error')	km.small <- try(flowMeans(z, NumC=n.pop[2],MaxN=n.pop[2]+2, Standardize=F, Update='None'))
+	if(class(km.small) == 'try-error')	km.small <- try(flowMeans(z, NumC=n.pop[2],MaxN=n.pop[2]+1, Standardize=F, Update='None'))
+
 	opp[row.names(z),'pop'] <- km.small@Label 
 	
 		for(i in 1:as.numeric(n.pop[2])){
@@ -158,7 +171,7 @@ clusterPENegative <- function(opp, n.pop, lim, lim.debris, tol, h0, h, test=F){
 					print(paste("Only 1 cell found, pop",i, "converted to Noise"))	
 					}
 		}
-	
+	}
 	
 	if(test == T){
 		####################
@@ -220,7 +233,7 @@ clusterPENegative <- function(opp, n.pop, lim, lim.debris, tol, h0, h, test=F){
 	return(opp)
 }
 
-clusterPop <- function(opp.filelist, save.path = getCruisePath(opp.filelist), pop.def.path, test=F,  noise = c(0,0), n.pop = c(3,3), tol=0.1,h0=0.5, h=1.0, min.opp = 800, min.beads = 200, min.synecho=200, lim.beads = 0, lim.synecho =0, lim.debris=c(10000,4000), save.plot=F){
+clusterPop <- function(opp.filelist, save.path = getCruisePath(opp.filelist), pop.def.path, test=F,  lim.largeP = 0.5*2^16, noise = c(0,0), n.pop = c(3,3), tol=0.1,h0=0.5, h=1.0, min.opp = 800, min.beads = 200, min.synecho=200, lim.beads = 0, lim.synecho =0, lim.debris=c(10000,4000), save.plot=F){
 	
 
 #library(cluster)	
@@ -261,7 +274,7 @@ if(test){
 	### clustering pop.baseline ###
 	###############################
 	
- 	opp <- clusterPopBaseline(opp, pop.def, noise)
+ 	opp <- clusterPopBaseline(opp, pop.def, lim.largeP, noise)
 	
 	beads <- subset(opp, pop == "beads")
 	synecho <- subset(opp, pop == "synecho")
@@ -389,7 +402,7 @@ for (file in opp.filelist){
 
 	print(paste("clustering", file))
 
- 	opp <- clusterPopBaseline(opp, pop.def, noise)
+ 	opp <- clusterPopBaseline(opp, pop.def, lim.largeP, noise)
 
 	beads <- subset(opp, pop == "beads")
 	synecho <- subset(opp, pop == "synecho")
@@ -408,7 +421,7 @@ for (file in opp.filelist){
 	#### clustering pe-negative phytoplankton  ####
 	###############################################
 	
-	opp1 <- clusterPENegative(opp, n.pop, lim, lim.debris, tol, h0, h, test=F)	
+	opp1 <- try(clusterPENegative(opp, n.pop, lim, lim.debris, tol, h0, h, test=F))	
 	if(class(opp1) == "try-error"){
 				print("Error in clustering PE negative cells, FLAGGED FILE")
 				opp$pop <- 'noise'
