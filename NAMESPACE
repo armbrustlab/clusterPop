@@ -1,0 +1,6 @@
+importFrom(flowMeans);
+import(flowPhyto);
+import(flowPeaks);
+		  
+exportPattern("^[^\\.]");
+

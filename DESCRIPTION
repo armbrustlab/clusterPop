@@ -1,10 +1,10 @@
 Package: clusterPop
 Version: 3.0
-Date: 2013-08-16
+Date: 2013-10-02
 Title: Cluster Phytoplankton populations
 Author: Francois Ribalet <ribalet@u.washington.edu>
 Maintainer: Francois Ribalet <ribalet@u.washington.edu>
-Depends: R (>= 3.0.0), flowPhyto, flowMeans, flowPeaks, IDPmisc, caroline
+Depends: R (>= 3.0.1), flowPhyto, flowMeans, flowPeaks
 Description: The package performs classification of phytoplankton populations based on k-means clustering algorithm and customizable parameters used to define the pre-gating regions. The package can analyzed a serie of continuous flow cytometry data files, where the classification results of the previous file are used to classify the populations in the next file. 
 License:  GPL (>= 2)
 URL: http://seaflow.ocean.washington.edu
