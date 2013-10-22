@@ -26,6 +26,13 @@
 	synecho <- subset(x, x[,yvar] > x[,xvar] - pop.def["synecho", "lim"] & x[,xvar] > pop.def["synecho", "xmin"] & x[,yvar] > pop.def["synecho", "ymin"] & x[,xvar] < pop.def["synecho", "xmax"] & x[,yvar] < pop.def["synecho", "ymax"])
 	opp[row.names(synecho), 'pop'] <- 'synecho'
 	
+ 	#Cluster Coccolithophores
+	x <- subset(opp, pop=='x')
+	yvar <- pop.def["cocco", "yvar"] 
+	xvar <- pop.def["cocco", "xvar"]
+	cocco <- subset(x, x[,yvar] > x[,xvar] + pop.def["cocco", "lim"] & x[,xvar] > pop.def["cocco", "xmin"] & x[,yvar] > pop.def["cocco", "ymin"]& 	x[,"chl_small"] > quantile(synecho$chl_small,0.9))
+	opp[row.names(cocco), 'pop'] <- 'cocco'
+	
 	#Cluster Cryptophytes
 	x <- subset(opp, pop=='x')
 	yvar <- pop.def["crypto", "yvar"]
@@ -41,12 +48,6 @@
 		opp[row.names(hetero), 'pop'] <- 'noise'
 		}
 
- 	#Cluster Coccolithophores
-	x <- subset(opp, pop=='x')
-	yvar <- pop.def["cocco", "yvar"] 
-	xvar <- pop.def["cocco", "xvar"]
-	cocco <- subset(x, x[,yvar] > x[,xvar] + pop.def["cocco", "lim"] & x[,xvar] > pop.def["cocco", "xmin"] & x[,yvar] > pop.def["cocco", "ymin"]& 	x[,"chl_small"] > quantile(synecho$chl_small,0.9))
-	opp[row.names(cocco), 'pop'] <- 'cocco'
 
 	
 # # 	#Cluster Noise
@@ -145,7 +146,7 @@
 			med.chl <- median(df$chl_small)
 			width.chl <- diff(c(quantile(df$chl_small, 0.05),quantile(df$chl_small, 0.95)))
 			print(paste("pop",i, ": MED,",round(med.chl) , "& WIDTH", round(width.chl)), quote=F)	
-				if(med.chl  < lim.debris[1] & width.chl < lim.debris[2]){
+				if(all(c(med.chl  < lim.debris[1] , width.chl < lim.debris[2]))){
 							opp[row.names(df),'pop'] <- 'noise'
 							print(paste("... converted to Noise"), quote=F)	
 							}else{
