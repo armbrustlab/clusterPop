@@ -292,7 +292,7 @@ if(test){
 	nf <- layout(matrix(c(2,0,5,0,1,3,4,6,8,0,11,0,7,9,10,12,14,0,16,16,13,15,16,16),4,4,byrow=TRUE), c(3,1,3,1,3), c(1,3,1,3,1,3), TRUE)
 
 	par(mar=c(6,6,1,1))
-	plotCytogram(opp, 'fsc_small', 'chl_small', pop.def=pop.def)
+	plotCytogram(opp, 'fsc_small', 'chl_small', pop.def=pop.def, transform=F)
 	par(mar=c(0,6,1,1))
 	barplot(hist1$counts, axes=FALSE, space=0, col=NA)
 	par(mar=c(6,0,1,1))
@@ -301,21 +301,21 @@ if(test){
 	mtext(paste("file: ",flowPhyto:::.getYearDay(prev.file),'/',basename(prev.file), sep=""), side=3, line=-4, outer=T,cex=1.2)
 
 	par(mar=c(6,6,1,1))
-	plotCytogram(opp, 'fsc_small', 'pe', pop.def=pop.def)
+	plotCytogram(opp, 'fsc_small', 'pe', pop.def=pop.def, transform=F)
 	par(mar=c(0,6,1,1))
 	barplot(hist1$counts, axes=FALSE, space=0, col=NA)
 	par(mar=c(6,0,1,1))
 	barplot(hist3$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
 
 	par(mar=c(6,6,1,1))
-	plotCytogram(opp, 'chl_small', 'pe', pop.def=pop.def)
+	plotCytogram(opp, 'chl_small', 'pe', pop.def=pop.def, transform=F)
 	par(mar=c(0,6,1,1))
 	barplot(hist2$counts, axes=FALSE, space=0, col=NA)
 	par(mar=c(6,0,1,1))
 	barplot(hist3$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
 
 	par(mar=c(6,6,1,1))
-	plotCytogram(opp, 'fsc_small', 'fsc_perp', pop.def=pop.def, add.legend=TRUE)
+	plotCytogram(opp, 'fsc_small', 'fsc_perp', pop.def=pop.def, transform=F, add.legend=TRUE)
 	par(mar=c(0,6,1,1))
 	barplot(hist1$counts, axes=FALSE, space=0, col=NA)
 	par(mar=c(6,0,1,1))
@@ -339,7 +339,7 @@ for (file in opp.filelist){
 	
 	message(paste("clustering", file))
 
-	opp <- readSeaflow(file)
+	opp <- readSeaflow(file, transform=F)
 	opp$pop <- 'x'
 
 	day <- flowPhyto:::.getYearDay(file)
@@ -430,7 +430,7 @@ for (file in opp.filelist){
 	nf <- layout(matrix(c(2,0,5,0,1,3,4,6,8,0,11,0,7,9,10,12,14,0,16,16,13,15,16,16),4,4,byrow=TRUE), c(3,1,3,1,3), c(1,3,1,3,1,3), TRUE)
 
 	par(mar=c(6,6,1,1))
-	plotCytogram(opp, 'fsc_small', 'chl_small', pop.def=pop.def)
+	plotCytogram(opp, 'fsc_small', 'chl_small', pop.def=pop.def, transform=F)
 	par(mar=c(0,6,1,1))
 	barplot(hist1$counts, axes=FALSE, space=0, col=NA)
 	par(mar=c(6,0,1,1))
@@ -439,21 +439,21 @@ for (file in opp.filelist){
 	mtext(paste("file: ",flowPhyto:::.getYearDay(file),'/',basename(file), sep=""), side=3, line=-4, outer=T,cex=1.2)
 
 	par(mar=c(6,6,1,1))
-	plotCytogram(opp, 'fsc_small', 'pe', pop.def=pop.def)
+	plotCytogram(opp, 'fsc_small', 'pe', pop.def=pop.def, transform=F)
 	par(mar=c(0,6,1,1))
 	barplot(hist1$counts, axes=FALSE, space=0, col=NA)
 	par(mar=c(6,0,1,1))
 	barplot(hist3$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
 
 	par(mar=c(6,6,1,1))
-	plotCytogram(opp, 'chl_small', 'pe', pop.def=pop.def)
+	plotCytogram(opp, 'chl_small', 'pe', pop.def=pop.def, transform=F)
 	par(mar=c(0,6,1,1))
 	barplot(hist2$counts, axes=FALSE, space=0, col=NA)
 	par(mar=c(6,0,1,1))
 	barplot(hist3$counts, axes=FALSE, space=0, horiz=TRUE, col=NA)
 
 	par(mar=c(6,6,1,1))
-	plotCytogram(opp, 'fsc_small', 'fsc_perp', pop.def=pop.def, add.legend=TRUE)
+	plotCytogram(opp, 'fsc_small', 'fsc_perp', pop.def=pop.def, transform=F, add.legend=TRUE)
 	par(mar=c(0,6,1,1))
 	barplot(hist1$counts, axes=FALSE, space=0, col=NA)
 	par(mar=c(6,0,1,1))
