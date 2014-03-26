@@ -30,7 +30,7 @@
 	x <- subset(opp, pop=='x')
 	yvar <- pop.def["cocco", "yvar"] 
 	xvar <- pop.def["cocco", "xvar"]
-	cocco <- subset(x, x[,yvar] > x[,xvar] + pop.def["cocco", "lim"] & x[,xvar] > pop.def["cocco", "xmin"] & x[,yvar] > pop.def["cocco", "ymin"]& 	x[,"chl_small"] > quantile(synecho$chl_small,0.9))
+	cocco <- subset(x, x[,yvar] > x[,xvar] + pop.def["cocco", "lim"] & x[,xvar] > pop.def["cocco", "xmin"] & x[,yvar] > pop.def["cocco", "ymin"])
 	opp[row.names(cocco), 'pop'] <- 'cocco'
 	
 	#Cluster Cryptophytes
@@ -146,11 +146,11 @@
 			med.chl <- median(df$chl_small)
 			width.chl <- diff(c(quantile(df$chl_small, 0.05),quantile(df$chl_small, 0.95)))
 			print(paste("pop",i, ": MED,",round(med.chl) , "& WIDTH", round(width.chl)), quote=F)	
-				if(all(c(med.chl  < lim.debris[1] , width.chl < lim.debris[2]))){
-							opp[row.names(df),'pop'] <- 'noise'
-							print(paste("... converted to Noise"), quote=F)	
-							}else{
+				if(all(c(med.chl  > lim.debris[1], width.chl > lim.debris[2]))){
 								opp[row.names(df),'pop'] <- 'pico'
+							}else{
+								opp[row.names(df),'pop'] <- 'noise'
+							    print(paste("... converted to Noise"), quote=F)	
 								}
 		}
 	}
@@ -244,7 +244,7 @@ if(test){
 	
 	message(paste("Initialization", prev.file))
 	
-	opp <- readSeaflow(prev.file) 
+	opp <- readSeaflow(prev.file, transform=F) 
 	opp$pop <- "x"
 
 	lim <- 0.25*2^16 
