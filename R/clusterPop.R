@@ -30,7 +30,7 @@
 	x <- subset(opp, pop=='x')
 	yvar <- pop.def["cocco", "yvar"] 
 	xvar <- pop.def["cocco", "xvar"]
-	cocco <- subset(x, x[,yvar] > x[,xvar] + pop.def["cocco", "lim"] & x[,xvar] > pop.def["cocco", "xmin"] & x[,yvar] > pop.def["cocco", "ymin"])
+	cocco <- subset(x, x[,yvar] > x[,xvar] + pop.def["cocco", "lim"] & x[,xvar] > pop.def["cocco", "xmin"] & x[,yvar] > pop.def["cocco", "ymin"] & x[,"chl_small"] > pop.def["cocco", "xmin"])
 	opp[row.names(cocco), 'pop'] <- 'cocco'
 	
 	#Cluster Cryptophytes
@@ -416,7 +416,7 @@ for (file in opp.filelist){
 
 	if(save.plot==TRUE){
 
-	png(paste(save.path, day,"/",basename(file),".",getFileNumber(file),".class.gif", sep=""),width=9, height=12, unit='in', res=100)
+	png(paste(save.path, day,"/",basename(file),".class.gif", sep=""),width=9, height=12, unit='in', res=100)
 	
 	breaks <- 50
 
